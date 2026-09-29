@@ -1,0 +1,41 @@
+name: VirtuLab Firmware CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  virtual-test:
+    runs-on: ubuntu-latest
+    name: Emulate & Benchmark
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run VirtuLab CI
+        id: virtulab
+        uses: ./ # Runs action.yml from repo root
+        with:
+          board: 'lm3s6965evb'
+          source_file: 'main.c'
+          linker_script: 'layout.ld'
+          timeout: '30s'
+
+      - name: Publish PR Diagnostic Summary
+        if: always()
+        run: |
+          echo "### 🚀 VirtuLab CI — Emulation Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Usage |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target Board** | \`lm3s6965evb\` (ARM Cortex-M3) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Flash Footprint** | \`${{ steps.virtulab.outputs.flash_bytes }} Bytes\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **RAM Footprint** | \`${{ steps.virtulab.outputs.ram_bytes }} Bytes\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Execution Log" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+          cat qemu_output.log >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

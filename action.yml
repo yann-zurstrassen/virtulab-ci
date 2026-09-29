@@ -1,0 +1,36 @@
+name: 'VirtuLab CI Runner'
+description: 'Automated bare-metal C/C++ firmware compilation, QEMU emulation, and binary analysis.'
+author: 'VirtuLab'
+
+inputs:
+  board:
+    description: 'Target QEMU board architecture'
+    required: false
+    default: 'lm3s6965evb'
+  timeout:
+    description: 'Execution timeout'
+    required: false
+    default: '30s'
+  source_file:
+    description: 'Path to main C/C++ source file'
+    required: false
+    default: 'main.c'
+  linker_script:
+    description: 'Path to custom linker script (.ld)'
+    required: false
+    default: 'layout.ld'
+
+outputs:
+  flash_bytes:
+    description: 'Total Flash (ROM) footprint in bytes'
+  ram_bytes:
+    description: 'Total RAM footprint in bytes'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.board }}
+    - ${{ inputs.timeout }}
+    - ${{ inputs.source_file }}
+    - ${{ inputs.linker_script }}

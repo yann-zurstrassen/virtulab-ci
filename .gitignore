@@ -1,0 +1,11 @@
+# Build outputs and logs
+*.elf
+*.bin
+*.hex
+*.o
+*.log
+qemu_output.log
+
+# Metrics & Temp files
+current_memory.json
+

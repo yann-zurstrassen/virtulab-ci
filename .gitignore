@@ -3,9 +3,11 @@
 *.bin
 *.hex
 *.o
+*.map
 *.log
-qemu_output.log
 
-# Metrics & Temp files
-current_memory.json
+# VirtuLab work directory (builds, baseline checkout, report.md)
+.virtulab/
 
+# Python
+__pycache__/

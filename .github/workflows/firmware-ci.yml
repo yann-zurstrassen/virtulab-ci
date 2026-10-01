@@ -1,4 +1,4 @@
-name: VirtuLab Firmware CI
+name: VirtuLab CI
 
 on:
   push:
@@ -6,36 +6,81 @@ on:
   pull_request:
     branches: [ main ]
 
-jobs:
-  virtual-test:
-    runs-on: ubuntu-latest
-    name: Emulate & Benchmark
+permissions:
+  contents: read
+  pull-requests: write
 
+# action.yml runs the published image. These jobs test the image built from
+# this commit instead, invoking it the way GitHub runs a Docker action: the
+# workspace and runner temp dir mounted at the same paths, inputs as INPUT_*.
+# The env file lists names only, so Docker copies values (even multi-line) as-is.
+env:
+  RUN_ACTION_IMAGE: >-
+    docker run --rm
+    -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$RUNNER_TEMP:$RUNNER_TEMP"
+    -w "$GITHUB_WORKSPACE"
+    --env-file <(compgen -e | grep -E '^(GITHUB|INPUT|RUNNER)_')
+    virtulab
+
+jobs:
+  engine-tests:
+    name: Engine tests (all boards)
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Build the action image
+        run: docker build -t virtulab .
+
+      - name: Run unit and end-to-end tests inside the image
+        run: >
+          docker run --rm -v "$PWD:/src" -w /src --entrypoint python3 virtulab
+          -m unittest discover -v -s tests -t .
+
+  firmware:
+    name: Emulate & benchmark (examples/crc, QEMU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the action image
+        run: docker build -t virtulab .
 
       - name: Run VirtuLab CI
-        id: virtulab
-        uses: ./ # Runs action.yml from repo root
-        with:
-          board: 'lm3s6965evb'
-          source_file: 'main.c'
-          linker_script: 'layout.ld'
-          timeout: '30s'
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: examples/crc
+          INPUT_BOARD: lm3s6965evb
+          INPUT_SOURCES: |
+            src/*.c
+            test/*.c
+          INPUT_INCLUDE_DIRS: include
+          INPUT_MAX_FLASH_INCREASE: 4K
+          INPUT_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_REPORT_ID: crc
 
-      - name: Publish PR Diagnostic Summary
-        if: always()
-        run: |
-          echo "### 🚀 VirtuLab CI — Emulation Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Usage |" >> $GITHUB_STEP_SUMMARY
-          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Target Board** | \`lm3s6965evb\` (ARM Cortex-M3) |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Flash Footprint** | \`${{ steps.virtulab.outputs.flash_bytes }} Bytes\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **RAM Footprint** | \`${{ steps.virtulab.outputs.ram_bytes }} Bytes\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### Execution Log" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
-          cat qemu_output.log >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+  thermostat:
+    name: Emulate STM32F4 + I2C sensor (examples/thermostat, Renode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the action image
+        run: docker build -t virtulab .
+
+      - name: Run VirtuLab CI
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: examples/thermostat
+          INPUT_BOARD: stm32f4_discovery
+          INPUT_SOURCES: |
+            src/*.c
+            test/*.c
+          INPUT_INCLUDE_DIRS: include
+          INPUT_PERIPHERALS: board.repl
+          INPUT_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_REPORT_ID: thermostat

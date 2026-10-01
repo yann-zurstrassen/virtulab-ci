@@ -1,36 +1,100 @@
-name: 'VirtuLab CI Runner'
-description: 'Automated bare-metal C/C++ firmware compilation, QEMU emulation, and binary analysis.'
+name: 'VirtuLab CI'
+description: 'Emulate Cortex-M hardware in CI: build firmware, run its tests on a virtual board (Renode or QEMU), report footprint changes on the PR.'
 author: 'VirtuLab'
+branding:
+  icon: 'cpu'
+  color: 'blue'
 
 inputs:
   board:
-    description: 'Target QEMU board architecture'
+    description: 'Target board. Renode: stm32f4_discovery. QEMU: lm3s6965evb, lm3s811evb, stm32vldiscovery, netduinoplus2, microbit, mps2-an385, mps2-an386, mps2-an500'
     required: false
     default: 'lm3s6965evb'
+  sources:
+    description: 'Source files or glob patterns, separated by spaces or newlines (C, C++ and assembly)'
+    required: false
+    default: '**/*.c'
+  include_dirs:
+    description: 'Include directories, separated by spaces or newlines'
+    required: false
+    default: ''
+  cflags:
+    description: 'Extra compiler flags, e.g. "-O2 -DUNIT_TEST" (defaults are -Os -Wall -Wextra)'
+    required: false
+    default: ''
+  ldflags:
+    description: 'Extra linker flags, e.g. "-lm"'
+    required: false
+    default: ''
+  linker_script:
+    description: 'Custom linker script. By default one is generated from the board memory map'
+    required: false
+    default: ''
+  runtime:
+    description: 'Link the VirtuLab startup code (vector table, semihosting stdio/exit, fault reporting). Set to false to bring your own'
+    required: false
+    default: 'true'
+  peripherals:
+    description: 'Extra devices on the board (Renode boards only): a .repl file path, or inline lines such as "tmp108: VirtuLab.TMP108 @ i2c1 0x48"'
+    required: false
+    default: ''
   timeout:
-    description: 'Execution timeout'
+    description: 'Emulation timeout, e.g. 30s or 2m'
     required: false
     default: '30s'
-  source_file:
-    description: 'Path to main C/C++ source file'
+  baseline_ref:
+    description: 'Git ref to compare the memory footprint against. Defaults to the PR base commit, or the previous commit on push'
     required: false
-    default: 'main.c'
-  linker_script:
-    description: 'Path to custom linker script (.ld)'
+    default: ${{ github.event.pull_request.base.sha || github.event.before }}
+  max_flash_increase:
+    description: 'Fail when flash grows by more than this many bytes vs the baseline (e.g. 512 or 2K). Empty = no limit'
     required: false
-    default: 'layout.ld'
+    default: ''
+  max_ram_increase:
+    description: 'Fail when RAM grows by more than this many bytes vs the baseline. Empty = no limit'
+    required: false
+    default: ''
+  working_directory:
+    description: 'Project directory, relative to the repository root'
+    required: false
+    default: '.'
+  comment:
+    description: 'Post the report as a sticky PR comment (needs pull-requests: write)'
+    required: false
+    default: 'true'
+  report_id:
+    description: 'Distinguishes sticky comments when the action runs more than once per PR (e.g. a board matrix)'
+    required: false
+    default: 'default'
+  github_token:
+    description: 'Token used to post the PR comment'
+    required: false
+    default: ${{ github.token }}
 
 outputs:
+  status:
+    description: 'passed, failed, crashed, timeout, build_failed or budget_exceeded'
   flash_bytes:
-    description: 'Total Flash (ROM) footprint in bytes'
+    description: 'Flash (ROM) footprint in bytes: text + data'
   ram_bytes:
-    description: 'Total RAM footprint in bytes'
+    description: 'Static RAM footprint in bytes: data + bss'
+  flash_delta:
+    description: 'Flash change in bytes vs the baseline (empty if no baseline)'
+  ram_delta:
+    description: 'RAM change in bytes vs the baseline (empty if no baseline)'
+  tests_total:
+    description: 'Number of unit tests run'
+  tests_passed:
+    description: 'Number of unit tests passed'
+  tests_failed:
+    description: 'Number of unit tests failed'
+  emulation_seconds:
+    description: 'Wall-clock time spent in the emulator'
+  report_path:
+    description: 'Path of the Markdown report, relative to the workspace'
 
 runs:
   using: 'docker'
-  image: 'Dockerfile'
-  args:
-    - ${{ inputs.board }}
-    - ${{ inputs.timeout }}
-    - ${{ inputs.source_file }}
-    - ${{ inputs.linker_script }}
+  # Prebuilt by .github/workflows/release.yml. CI in this repository tests the
+  # image built from the PR instead (see firmware-ci.yml).
+  image: 'docker://ghcr.io/yann-zurstrassen/virtulab-ci:1'

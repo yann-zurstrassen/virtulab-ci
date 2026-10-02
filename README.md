@@ -250,11 +250,7 @@ The runtime (`virtulab/runtime/`) is linked into every image. It contains the ve
 
 ## 🗺️ Roadmap
 
-* More Renode boards (Nucleo STM32F4/L4, nRF52840) and RISC-V (ESP32-C3)
-* More device models: SPI flash, IMUs, power monitors. Then generate them from datasheets
-* Scenario files: change sensor values on a timeline without writing C
-* Footprint history and trend charts across `main`
-* Per-test timing and JUnit XML export
+Next up is fitting existing projects as they are: run your own CMake, Make, PlatformIO or Zephyr build, keep your startup code, and describe the firmware once in `virtulab.yml`. After that, target any chip by part number, `pipx install virtulab` with a Docker backend, `virtulab init`, and JUnit and GitLab support. See [ROADMAP.md](ROADMAP.md) for the phases and what "done" means for each.
 
 ## 🧑‍💻 Development
 

@@ -4,17 +4,18 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 permissions:
   contents: read
   pull-requests: write
 
-# action.yml runs the published image. These jobs test the image built from
-# this commit instead, invoking it the way GitHub runs a Docker action: the
-# workspace and runner temp dir mounted at the same paths, inputs as INPUT_*.
-# The env file lists names only, so Docker copies values (even multi-line) as-is.
+# The demo firmware (src/, test/, fuzz/, fault/) is checked by the make targets,
+# which drive the engine in this repository. The `thermostat` job still runs the
+# published-action path (Docker image, Renode). Each make-based job leaves a
+# one-line result in .ci/; the `report` job merges them into one sticky comment.
 env:
+  TOOLS: qemu-system-arm gcc-arm-none-eabi binutils-arm-none-eabi gdb-multiarch
+  BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'main' }}
   RUN_ACTION_IMAGE: >-
     docker run --rm
     -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$RUNNER_TEMP:$RUNNER_TEMP"
@@ -37,29 +38,94 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src --entrypoint python3 virtulab
           -m unittest discover -v -s tests -t .
 
-  firmware:
-    name: Emulate & benchmark (examples/crc, QEMU)
+  build-test:
+    name: Build & unit tests (QEMU)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install toolchain and emulator
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TOOLS
+      - name: make test
+        run: make test
 
-      - name: Build the action image
-        run: docker build -t virtulab .
+  footprint:
+    name: Footprint (Flash/RAM vs base)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain and emulator
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TOOLS
+      - name: make footprint
+        run: make footprint BASELINE="$BASELINE_REF"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fragment-footprint
+          path: .ci/footprint.md
+          if-no-files-found: ignore
 
-      - name: Run VirtuLab CI
-        shell: bash
-        run: eval "$RUN_ACTION_IMAGE"
+  coverage:
+    name: Coverage (gcov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: make coverage
+        run: make coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fragment-coverage
+          path: .ci/coverage.txt
+          if-no-files-found: ignore
+
+  fuzz:
+    name: Fuzz parser (60 s, host-side)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: make fuzz
+        run: make fuzz FUZZ_SECONDS=60
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fragment-fuzz
+          path: |
+            .ci/fuzz.txt
+            fuzz/crashes/*.crash
+          if-no-files-found: ignore
+
+  fault-injection:
+    name: Fault injection (single instruction skip)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain, emulator and GDB
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TOOLS
+      - name: make fault
+        run: make fault
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fragment-fault
+          path: .ci/fault.txt
+          if-no-files-found: ignore
+
+  report:
+    name: Sticky PR comment
+    needs: [ build-test, footprint, coverage, fuzz, fault-injection ]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fragment-*
+          path: .ci
+          merge-multiple: true
+      - name: Assemble and post the comment
+        run: python3 tools/ci_report.py --post
         env:
-          INPUT_WORKING_DIRECTORY: examples/crc
-          INPUT_BOARD: lm3s6965evb
-          INPUT_SOURCES: |
-            src/*.c
-            test/*.c
-          INPUT_INCLUDE_DIRS: include
-          INPUT_MAX_FLASH_INCREASE: 4K
-          INPUT_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
-          INPUT_GITHUB_TOKEN: ${{ github.token }}
-          INPUT_REPORT_ID: crc
+          GITHUB_TOKEN: ${{ github.token }}
 
   thermostat:
     name: Emulate STM32F4 + I2C sensor (examples/thermostat, Renode)

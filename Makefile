@@ -17,7 +17,7 @@ MAX_FLASH_INCREASE ?= 4K
 MAX_RAM_INCREASE ?= 2K
 FUZZ_SECONDS ?= 10
 FUZZ_SEED ?= 1
-AUTH_HARDENED ?= 1
+AUTH_HARDENED ?=
 
 CRC_DIR := examples/crc
 CI_DIR := .ci
@@ -27,7 +27,8 @@ HOST_FLAGS := -std=c99 -Wall -Wextra -Werror -Wconversion
 STRICT_FLAGS := $(HOST_FLAGS) -ffreestanding
 INCLUDE_DIRS := include $(CRC_DIR)/include
 INCLUDE_FLAGS := $(addprefix -I,$(INCLUDE_DIRS))
-AUTH_FLAGS := -DAUTH_HARDENED=$(AUTH_HARDENED)
+# Only overrides include/auth.h when set, so the header stays the single default.
+AUTH_FLAGS := $(if $(AUTH_HARDENED),-DAUTH_HARDENED=$(AUTH_HARDENED),)
 
 FIRMWARE_SRC := src/parser.c src/auth.c src/sensor.c $(SENSOR_MODEL) $(CRC_DIR)/src/crc.c
 TEST_SRC := test/test_main.c test/test_crc.c test/test_parser.c test/test_auth.c test/test_sensor.c

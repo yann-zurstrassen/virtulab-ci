@@ -11,12 +11,13 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 --elf FILE --board NAME --source FILE [--address 0xADDR] [--timeout SECONDS]" >&2
+    echo "usage: $0 --elf FILE --board NAME --source FILE [--address 0xADDR] [--timeout SECONDS] [--verbose]" >&2
     exit 2
 }
 
-elf="" board="" source_file="" only_address="" timeout_s=10
+elf="" board="" source_file="" only_address="" timeout_s=10 verbose=no
 while [ $# -gt 0 ]; do
+    if [ "$1" = "--verbose" ]; then verbose=yes; shift; continue; fi
     [ $# -ge 2 ] || usage
     case "$1" in
         --elf) elf="$2" ;;
@@ -73,29 +74,46 @@ run_original() {
     classify "$work/original.out"
 }
 
-# Prints "<result> <applied>" for a skip at $1 that resumes at $2.
+# Waits up to $2 seconds for process $1 to exit on its own, then kills it. QEMU
+# exits by itself when the firmware does; killing it earlier loses its buffered output.
+wait_or_kill() {
+    local pid="$1" ticks=$(($2 * 10))
+    while kill -0 "$pid" 2> /dev/null && [ "$ticks" -gt 0 ]; do
+        sleep 0.1
+        ticks=$((ticks - 1))
+    done
+    kill "$pid" 2> /dev/null || true
+    wait "$pid" 2> /dev/null || true
+}
+
+# Prints "<result> <applied>" for a skip at $1 that resumes at $2. If the breakpoint is
+# never reached, the first `continue` runs to exit and gdb aborts the script at `set $pc`.
+# Straight-line commands, not a breakpoint `commands` block: gdb would end the batch
+# (and kill the target) before the firmware finished.
 run_faulted() {
-    local at="$1" resume="$2" port=$((30000 + RANDOM % 20000))
+    local at="$1" resume="$2" port=$((30000 + RANDOM % 20000)) tries=0
     cat > "$work/gdb.cmd" <<EOF
 set pagination off
 set confirm off
 target remote 127.0.0.1:$port
 break *$at
-commands
-silent
+continue
 set \$pc = $resume
 printf "FAULT_APPLIED\\n"
-continue
-end
 continue
 EOF
     # shellcheck disable=SC2046
     "$qemu" $(qemu_args) -S -gdb "tcp:127.0.0.1:$port" < /dev/null > "$work/faulted.out" 2> /dev/null &
     local qemu_pid=$!
-    sleep 0.15
-    run_bounded "$gdb" -batch -nx "$elf" -x "$work/gdb.cmd" > "$work/gdb.out" 2>&1
-    kill "$qemu_pid" 2> /dev/null || true
-    wait "$qemu_pid" 2> /dev/null || true
+    # QEMU needs a moment before it listens; a refused connection costs nothing, so retry.
+    while :; do
+        run_bounded "$gdb" -batch -nx "$elf" -x "$work/gdb.cmd" > "$work/gdb.out" 2>&1
+        if grep -q 'Connection refused' "$work/gdb.out" && [ "$tries" -lt 50 ]; then
+            tries=$((tries + 1)); sleep 0.1; continue
+        fi
+        break
+    done
+    wait_or_kill "$qemu_pid" 3
     local applied=no
     grep -q FAULT_APPLIED "$work/gdb.out" && applied=yes
     echo "$(classify "$work/faulted.out") $applied"
@@ -138,6 +156,7 @@ while read -r addr size name offset text; do
     resume=$(printf '0x%x' $((0x$addr + size)))
     read -r result applied <<< "$(run_faulted "0x$addr" "$resume")"
     swept=$((swept + 1))
+    if [ "$verbose" = yes ]; then printf 'sweep 0x%s %s+%s applied=%s result=%s\n' "$addr" "$name" "$offset" "$applied" "$result"; fi
     if [ "$applied" = no ]; then not_reached=$((not_reached + 1)); continue; fi
     applied_count=$((applied_count + 1))
     case "$result" in

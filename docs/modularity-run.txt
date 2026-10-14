@@ -1,0 +1,22 @@
+$ make test SENSOR=nominal   (sensor lines only)
+  src/sensor.c
+  src/hal/sensor_hal_nominal.c
+  test/test_sensor.c
+📊 Flash 5,912 B / 256 KiB · RAM 236 B / 64 KiB (text 5,908, data 4, bss 232)
+test/test_sensor.c:49:test_sensor_first_sample_is_about_room_temperature:PASS
+test/test_sensor.c:50:test_sensor_stays_healthy_over_repeated_samples:PASS
+test/test_sensor.c:51:test_sensor_rejects_null_arguments:PASS
+✅ PASSED in 0.09s — 28/28 tests passed
+exit=
+
+$ make test SENSOR=faulty   (sensor lines only)
+  src/sensor.c
+  src/hal/sensor_hal_faulty.c
+  test/test_sensor.c
+📊 Flash 5,912 B / 256 KiB · RAM 236 B / 64 KiB (text 5,908, data 4, bss 232)
+test/test_sensor.c:49:test_sensor_first_sample_is_about_room_temperature:PASS
+test/test_sensor.c:32:test_sensor_stays_healthy_over_repeated_samples:FAIL: Expected 0 Was 4 sensor reported a fault while sampling
+test/test_sensor.c:51:test_sensor_rejects_null_arguments:PASS
+❌ FAILED in 0.03s (exit code 1) — 27/28 tests passed
+exit=
+

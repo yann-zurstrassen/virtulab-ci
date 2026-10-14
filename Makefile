@@ -47,9 +47,11 @@ test: ## Build the firmware tests and run them in QEMU
 	$(VIRTULAB) -s $(FIRMWARE_SRC) $(TEST_SRC) --cflags="$(STRICT_FLAGS) $(AUTH_FLAGS)"
 
 footprint: ## Flash/RAM report with delta against BASELINE (a git ref)
-	$(VIRTULAB) -s $(FIRMWARE_SRC) $(TEST_SRC) --cflags="$(STRICT_FLAGS) $(AUTH_FLAGS)" \
+	mkdir -p $(CI_DIR)
+	status=0; $(VIRTULAB) -s $(FIRMWARE_SRC) $(TEST_SRC) --cflags="$(STRICT_FLAGS) $(AUTH_FLAGS)" \
 	    --baseline $(BASELINE) --max-flash-increase $(MAX_FLASH_INCREASE) \
-	    --max-ram-increase $(MAX_RAM_INCREASE)
+	    --max-ram-increase $(MAX_RAM_INCREASE) || status=$$?; \
+	cp .virtulab/report.md $(CI_DIR)/footprint.md; exit $$status
 
 coverage: ## Line/branch coverage of the unit tests (native gcov build)
 	rm -rf $(BUILD_DIR)/coverage && mkdir -p $(BUILD_DIR)/coverage $(CI_DIR)

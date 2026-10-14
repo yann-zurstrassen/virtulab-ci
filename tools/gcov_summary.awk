@@ -8,8 +8,8 @@ in_project && /^Lines executed:/ {
 }
 in_project && /^Taken at least once:/ {
     split($0, parts, /[:% ]+/)
-    branch_total += parts[6]
-    branch_hit += parts[4] * parts[6] / 100
+    branch_total += parts[7]
+    branch_hit += parts[5] * parts[7] / 100
 }
 END {
     if (lines_total == 0) { print "COVERAGE unavailable"; exit 1 }

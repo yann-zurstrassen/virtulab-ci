@@ -1,0 +1,56 @@
+# python3 -m unittest discover -v -s tests -t .   on 63107c2, Apple M4 Pro, no Renode installed
+$ python3 -m unittest discover -v -s tests -t .
+test_action_defaults (tests.test_cli.OptionParsingTest.test_action_defaults) ... ok
+test_options_from_action_inputs (tests.test_cli.OptionParsingTest.test_options_from_action_inputs) ... ok
+test_parse_byte_limit (tests.test_cli.OptionParsingTest.test_parse_byte_limit) ... ok
+test_parse_timeout (tests.test_cli.OptionParsingTest.test_parse_timeout) ... ok
+test_split_list (tests.test_cli.OptionParsingTest.test_split_list) ... ok
+test_creates_comment_when_missing (tests.test_cli.StickyCommentTest.test_creates_comment_when_missing) ... ok
+test_pull_request_number_from_event (tests.test_cli.StickyCommentTest.test_pull_request_number_from_event) ... ok
+test_updates_existing_comment_on_later_page (tests.test_cli.StickyCommentTest.test_updates_existing_comment_on_later_page) ... ok
+test_annotation_escaping (tests.test_cli.WorkflowCommandsTest.test_annotation_escaping) ... ok
+test_outputs_use_heredoc_delimiters (tests.test_cli.WorkflowCommandsTest.test_outputs_use_heredoc_delimiters) ... ok
+test_repo_path_relative_to_workspace (tests.test_cli.WorkflowCommandsTest.test_repo_path_relative_to_workspace) ... ok
+test_bare_metal_example_without_runtime (tests.test_e2e.EndToEndTest.test_bare_metal_example_without_runtime) ... ok
+test_baseline_delta_and_budget (tests.test_e2e.EndToEndTest.test_baseline_delta_and_budget) ... ok
+test_compile_error_is_annotated (tests.test_e2e.EndToEndTest.test_compile_error_is_annotated) ... ok
+test_cpp_static_constructors_and_unflushed_printf (tests.test_e2e.EndToEndTest.test_cpp_static_constructors_and_unflushed_printf) ... ok
+test_crc_example_passes_on_every_board (tests.test_e2e.EndToEndTest.test_crc_example_passes_on_every_board) ... 
+  test_crc_example_passes_on_every_board (tests.test_e2e.EndToEndTest.test_crc_example_passes_on_every_board) (board='stm32f4_discovery') ... skipped 'renode is not installed'
+test_exit_code_propagates (tests.test_e2e.EndToEndTest.test_exit_code_propagates) ... ok
+test_failing_test_is_annotated (tests.test_e2e.EndToEndTest.test_failing_test_is_annotated) ... ok
+test_fault_is_mapped_to_source_line (tests.test_e2e.EndToEndTest.test_fault_is_mapped_to_source_line) ... ok
+test_missing_baseline_is_not_fatal (tests.test_e2e.EndToEndTest.test_missing_baseline_is_not_fatal) ... ok
+test_peripherals_rejected_on_qemu_board (tests.test_e2e.EndToEndTest.test_peripherals_rejected_on_qemu_board) ... ok
+test_ram_overflow_fails_the_build (tests.test_e2e.EndToEndTest.test_ram_overflow_fails_the_build) ... ok
+test_timeout (tests.test_e2e.EndToEndTest.test_timeout) ... ok
+test_vl_sim_reports_unsupported_on_qemu (tests.test_e2e.EndToEndTest.test_vl_sim_reports_unsupported_on_qemu) ... ok
+test_fault_and_timeout_on_renode (tests.test_e2e.RenodeTest.test_fault_and_timeout_on_renode) ... skipped 'the toolchain and Renode are required'
+test_rejected_emulator_command_fails_the_test (tests.test_e2e.RenodeTest.test_rejected_emulator_command_fails_the_test) ... skipped 'the toolchain and Renode are required'
+test_thermostat_example_with_simulated_sensor (tests.test_e2e.RenodeTest.test_thermostat_example_with_simulated_sensor) ... skipped 'the toolchain and Renode are required'
+test_gcc_errors_and_warnings (tests.test_parse.ParseDiagnosticsTest.test_gcc_errors_and_warnings) ... ok
+test_cortex_m0_fault_has_no_status_registers (tests.test_parse.ParseFaultTest.test_cortex_m0_fault_has_no_status_registers) ... ok
+test_fault_line (tests.test_parse.ParseFaultTest.test_fault_line) ... ok
+test_no_fault (tests.test_parse.ParseFaultTest.test_no_fault) ... ok
+test_adds_up_multiple_unity_groups (tests.test_parse.ParseTestsTest.test_adds_up_multiple_unity_groups) ... ok
+test_counts_cases_without_summary_line (tests.test_parse.ParseTestsTest.test_counts_cases_without_summary_line) ... ok
+test_crlf_line_endings (tests.test_parse.ParseTestsTest.test_crlf_line_endings) ... ok
+test_no_tests (tests.test_parse.ParseTestsTest.test_no_tests) ... ok
+test_unity_output (tests.test_parse.ParseTestsTest.test_unity_output) ... ok
+test_diff_symbols_orders_by_magnitude (tests.test_report.HelpersTest.test_diff_symbols_orders_by_magnitude) ... ok
+test_fmt_delta (tests.test_report.HelpersTest.test_fmt_delta) ... ok
+test_baseline_note_when_unavailable (tests.test_report.MarkdownTest.test_baseline_note_when_unavailable) ... ok
+test_build_failure_lists_errors (tests.test_report.MarkdownTest.test_build_failure_lists_errors) ... ok
+test_failing_tests_and_fault (tests.test_report.MarkdownTest.test_failing_tests_and_fault) ... ok
+test_log_cannot_break_out_of_code_fence (tests.test_report.MarkdownTest.test_log_cannot_break_out_of_code_fence) ... ok
+test_passing_report_with_baseline (tests.test_report.MarkdownTest.test_passing_report_with_baseline) ... ok
+test_failed_tests_fail_even_with_zero_exit_code (tests.test_report.StatusTest.test_failed_tests_fail_even_with_zero_exit_code) ... ok
+test_statuses (tests.test_report.StatusTest.test_statuses) ... ok
+
+----------------------------------------------------------------------
+Ran 45 tests in 5.011s
+
+OK (skipped=4)
+real 5.48
+user 3.35
+sys 1.31

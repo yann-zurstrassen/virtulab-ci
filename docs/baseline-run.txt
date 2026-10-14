@@ -1,0 +1,19 @@
+$ python3 -m virtulab run -C examples/crc -b lm3s6965evb -s "src/*.c" "test/*.c" -I include
+🚀 VirtuLab CI 0.1.0 — lm3s6965evb (Cortex-M3, TI Stellaris LM3S6965)
+── 🔨 Build ─────────────────────────────────────────────────────
+  src/crc.c
+  test/test_crc.c
+📊 Flash 1,904 B / 256 KiB · RAM 188 B / 64 KiB (text 1,900, data 4, bss 184)
+⚡ Emulating on QEMU lm3s6965evb (timeout 30s)
+── Emulator output ─────────────────────────────────────────────
+test/test_crc.c:33:test_crc32_of_empty_buffer_is_zero:PASS
+test/test_crc.c:34:test_crc32_check_value:PASS
+test/test_crc.c:35:test_crc32_update_matches_single_pass:PASS
+test/test_crc.c:36:test_crc16_ccitt_check_value:PASS
+
+-----------------------
+4 Tests 0 Failures 0 Ignored
+OK
+✅ PASSED in 0.47s — 4/4 tests passed
+📝 Report written to examples/crc/.virtulab/report.md
+exit=0

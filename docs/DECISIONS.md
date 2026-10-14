@@ -28,3 +28,58 @@ Python 3.14.7, arm-none-eabi-gcc 15.3.1, QEMU 11.1.1. Raw output: [`baseline-run
 ### Working tree
 
 `ROADMAP.md` had uncommitted edits by the repo owner when I started. They are left uncommitted and untouched on every branch.
+
+## Branches and where things live
+
+- Everything is on `feat/security-positioning`, branched from `mvp` (the checked-out branch), **not** from `main`. `main` was not touched.
+- Demo branches `demo/pr1-passing` … `demo/pr5-fault-injection` are each one code commit (PR 4: two) plus its `docs/demo-prs/prN.md`, off the base commit `a39c1bb`. The base later gained docs-only commits; the compiled firmware is unchanged by them.
+- **The fuzz harness (`fuzz/parser_fuzz.c`) and `tools/fault_inject.sh` are in the base branch, not only on `demo/pr4` / `demo/pr5`.** Reason: the task needs the CI `fuzz` and `fault-injection` jobs and a working `make fuzz` / `make fault` from a clean checkout. PR 4 therefore contributes the seeded bug and the crash input, PR 5 flips `AUTH_HARDENED` in `include/auth.h` to 0.
+- **The hardened PIN comparison is the default in the base** (`AUTH_HARDENED 1`), as requested ("hardened variant on the main demo branch").
+
+## Not done: skipped, planned or mocked
+
+| Item | Status | Why |
+| :--- | :--- | :--- |
+| Opening the five PRs on GitHub | 🚧 skipped | `gh` is not installed. PR text and real sticky comments are in `docs/demo-prs/` |
+| Running the CI workflow | 🚧 not executed | Cannot run GitHub Actions locally. Validated only with Ruby's YAML parser (`actionlint` and PyYAML are not installed). apt package names for Ubuntu (`gdb-multiarch`, `binutils-arm-none-eabi`) and Linux gcc/gcov behaviour (coverage awk, ASan) are untested |
+| AFL++ / libFuzzer | 🚧 PLANNED | Not installed. Replaced by a deterministic mutation loop written in C, as the task allows |
+| Full-system fuzzing | 🚧 PLANNED | Fuzzing is **host-side**, of the parser logic only, and is documented that way |
+| MC/DC | 🚧 not measured | Only gcov line and branch coverage. Branch counts are gcov's, at `-O0`, and include compiler-generated branches |
+| Renode / `examples/thermostat` | 🚧 not run | Renode is not installed. All Renode statements in `docs/ENGINE.md` are carried over, unverified |
+| FIDELITY table for other boards | 🚧 not assessed | Only `lm3s6965evb` was inspected (QEMU's own device dump). The other QEMU boards were only exercised through the engine's CRC e2e test |
+| Sensor models (`sensor_nominal`, `sensor_faulty`) | 🧪 MOCKED | Software HAL models, swapped at link time. Not QEMU devices, not the same ELF. QEMU cannot attach devices to `lm3s6965evb` from the command line the engine uses |
+| Fault injection beyond single skip | 🚧 PLANNED | No bit flips, multi-fault, or repeated-execution (loop iteration) skips. Each instruction is skipped on its **first** execution only. The probe's wrong PIN differs in byte 0, the worst case for that |
+| Flash driver | not present | The task says "keep the existing flash driver"; the repo never had one, so none was invented |
+| Real Unity | not vendored | The repo's Unity-compatible `virtulab_test.h` is used (same macros and output format) |
+
+## Assumptions and judgment calls
+
+- **Footprint is measured on the test image**, as the existing engine does (tests are linked in). The baseline is built from the PR's base ref with the same source globs. When the base ref lacks those files (for example `main`), the engine reports "no footprint delta".
+- **Budgets:** `MAX_FLASH_INCREASE ?= 4K` (the old workflow's value) and `MAX_RAM_INCREASE ?= 2K` (my choice) in the `Makefile`.
+- **Fuzz time:** 10 s by default locally, 60 s in CI. Seed 1. The loop is deterministic for a fixed seed up to the time cut-off.
+- **Parser design:** the parser copies the payload before the CRC check and zeroes the frame on any error. That ordering is what makes the seeded off-by-one reachable without a valid CRC. It is a legitimate pattern, but I chose it partly for the demo.
+- **Seeded bug detection:** the write overflow is caught by a guard canary behind the frame (plus ASan/UBSan for other memory errors), not by a hardware fault. A 1-byte over-read is not reliably caught.
+- **Unit tests deliberately do not test a payload length of exactly 33.** That is why PR 4's unit tests stay green. A fix for PR 4 should add that regression test.
+- **Fault classification:** `BYPASS` = the probe test fails with "auth bypass". `denied` = probe passes. `crashed_or_hung` = no PASS/FAIL line (HardFault, infinite loop, 10 s timeout). `not_reached` = the breakpoint never fired. Crashes and hangs are reported but are neither counted as bypass nor as safe.
+- **Hardening claim:** the hardened build had 0 bypasses over 56 applied skips (78 instructions located, 22 never reached). The plain build had 2 bypasses over 36 applied skips. Both sweeps are deterministic across repeated runs (checked three times each). A clean sweep is evidence, not proof.
+- **ROI inputs** in the README are illustrative. `tools/roi.py` only does arithmetic.
+- **Timing claims:** only the four measured wall times in the README (one run each, Apple M4 Pro, clean clone, `docs/runs/`). "less than 5 seconds" and every other earlier timing claim was removed.
+- **Sticky comments in `docs/demo-prs/` are assembled by `tools/ci_report.py` from local runs** (`make -k footprint coverage fuzz fault report`). They were not posted by CI. `BASELINE=feat/security-positioning` was passed explicitly; locally the default `main` has no `src/`.
+- The five PR checks were run in parallel git worktrees to save time. That affects `execs` counts (fuzz throughput), not results.
+- **Old README:** the "Vercel for Firmware" tagline, "replaces the bench" phrasing and the "more accurate than the emulators" line were removed. The previous engine reference moved to `docs/ENGINE.md` unchanged apart from relative links.
+- `README.md` on `main` still contains the garbled `google.com/search?q=` link wrappers; the `mvp` README this work started from already had plain URLs, and the new README has none. `main` was left alone.
+- `ROADMAP.md` (owner's uncommitted edits) was left uncommitted on every branch.
+- Commits carry a `Co-Authored-By` trailer as requested by the session instructions.
+
+## Bugs I found in my own tooling while verifying
+
+Recorded because they would have produced wrong results silently.
+
+1. **GNU make 3.81 (macOS) ignores `.SHELLFLAGS`.** `-o pipefail` was never applied, so `make fuzz | tee` exited 0 on a crash. Fixed with a per-recipe `STRICT` prefix.
+2. **`AUTH_HARDENED` was defined twice** (Makefile default `1` overrode the header), so PR 5's one-line change did nothing. The header is now the single default.
+3. **The fault sweep was non-deterministic:** a fixed `sleep` before GDB connected, QEMU killed before its stdout was flushed, and a breakpoint `commands { continue }` block that let GDB end the batch early. Fixed (retry on refused connection, wait for QEMU to exit, straight-line GDB script). Results were stable over repeated runs afterwards. The first, flaky numbers were discarded.
+4. `docs/demo-prs/pr1-pr3.md` were regenerated after items 1 and 2 so that every recorded sha and number matches the final base.
+
+## Pre-existing engine quirk, not fixed
+
+The "Largest symbol size changes" table can list `__preinit_array_start` with a huge "before/after" size (for example 536,865,004). It comes from `nm --print-size` output in `virtulab/build.py::symbol_sizes`. It is visible in the PR 2 comment. It does not affect the Flash/RAM totals, which come from `arm-none-eabi-size`.

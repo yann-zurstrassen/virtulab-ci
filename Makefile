@@ -2,7 +2,8 @@
 # `make test` is the one command a clean checkout needs.
 
 SHELL := /bin/bash
-.SHELLFLAGS := -eu -o pipefail -c
+# GNU make 3.81 (macOS) ignores .SHELLFLAGS, so recipes with pipes or loops opt in themselves.
+STRICT := set -eu -o pipefail;
 
 TARGET ?= lm3s6965evb
 SENSOR ?= nominal
@@ -48,43 +49,44 @@ test: ## Build the firmware tests and run them in QEMU
 
 footprint: ## Flash/RAM report with delta against BASELINE (a git ref)
 	mkdir -p $(CI_DIR)
-	status=0; $(VIRTULAB) -s $(FIRMWARE_SRC) $(TEST_SRC) --cflags="$(STRICT_FLAGS) $(AUTH_FLAGS)" \
+	$(STRICT) status=0; $(VIRTULAB) -s $(FIRMWARE_SRC) $(TEST_SRC) --cflags="$(STRICT_FLAGS) $(AUTH_FLAGS)" \
 	    --baseline $(BASELINE) --max-flash-increase $(MAX_FLASH_INCREASE) \
 	    --max-ram-increase $(MAX_RAM_INCREASE) || status=$$?; \
 	cp .virtulab/report.md $(CI_DIR)/footprint.md; exit $$status
 
+# Coverage is still reported when a test fails; the target then fails with the test status.
 coverage: ## Line/branch coverage of the unit tests (native gcov build)
 	rm -rf $(BUILD_DIR)/coverage && mkdir -p $(BUILD_DIR)/coverage $(CI_DIR)
-	for src in $(COVERED_SRC); do \
+	$(STRICT) for src in $(COVERED_SRC); do \
 	    $(HOST_CC) $(HOST_FLAGS) --coverage -O0 -g $(INCLUDE_FLAGS) $(AUTH_FLAGS) \
 	        -c $$src -o $(BUILD_DIR)/coverage/$$(basename $$src .c).o; \
 	done
-	for src in $(TEST_SRC); do \
+	$(STRICT) for src in $(TEST_SRC); do \
 	    $(HOST_CC) $(HOST_FLAGS) -O0 -g $(INCLUDE_FLAGS) -I$(RUNTIME_DIR) -Itest \
 	        -c $$src -o $(BUILD_DIR)/coverage/$$(basename $$src .c).o; \
 	done
 	$(HOST_CC) -O0 -I$(RUNTIME_DIR) -c $(RUNTIME_DIR)/virtulab_test.c -o $(BUILD_DIR)/coverage/virtulab_test.o
 	$(HOST_CC) -O0 -I$(RUNTIME_DIR) -c test/host/vl_host.c -o $(BUILD_DIR)/coverage/vl_host.o
 	$(HOST_CC) --coverage $(BUILD_DIR)/coverage/*.o -o $(BUILD_DIR)/coverage/unit_tests
-	$(BUILD_DIR)/coverage/unit_tests | tee $(BUILD_DIR)/coverage/run.log
-	for src in $(COVERED_SRC); do \
-	    gcov -b -o $(BUILD_DIR)/coverage $$src; \
-	done > $(BUILD_DIR)/coverage/gcov.txt
-	mv *.gcov $(BUILD_DIR)/coverage/
-	awk -f tools/gcov_summary.awk $(BUILD_DIR)/coverage/gcov.txt | tee $(CI_DIR)/coverage.txt
+	$(STRICT) status=0; $(BUILD_DIR)/coverage/unit_tests | tee $(BUILD_DIR)/coverage/run.log || status=$$?; \
+	for src in $(COVERED_SRC); do gcov -b -o $(BUILD_DIR)/coverage $$src; done \
+	    > $(BUILD_DIR)/coverage/gcov.txt; \
+	mv *.gcov $(BUILD_DIR)/coverage/; \
+	awk -f tools/gcov_summary.awk $(BUILD_DIR)/coverage/gcov.txt | tee $(CI_DIR)/coverage.txt; \
+	exit $$status
 
 fuzz: ## Host-side fuzzing of the frame parser (deterministic mutation loop)
 	mkdir -p $(BUILD_DIR)/fuzz $(CI_DIR)
 	$(HOST_CC) -std=c99 -Wall -Wextra -Werror -Wconversion -O1 -g -fsanitize=address,undefined \
 	    -fno-sanitize-recover=undefined $(INCLUDE_FLAGS) fuzz/parser_fuzz.c src/parser.c \
 	    $(CRC_DIR)/src/crc.c -o $(BUILD_DIR)/fuzz/parser_fuzz
-	$(BUILD_DIR)/fuzz/parser_fuzz --seconds $(FUZZ_SECONDS) --seed $(FUZZ_SEED) \
+	$(STRICT) $(BUILD_DIR)/fuzz/parser_fuzz --seconds $(FUZZ_SECONDS) --seed $(FUZZ_SEED) \
 	    --crash-dir fuzz/crashes | tee $(CI_DIR)/fuzz.txt
 
 fault: ## Single-instruction-skip sweep of the PIN check (QEMU + GDB)
 	mkdir -p $(CI_DIR)
 	$(VIRTULAB) -s $(FAULT_SRC) --cflags="$(STRICT_FLAGS) $(AUTH_FLAGS)" --work-dir .virtulab/fault
-	tools/fault_inject.sh --elf .virtulab/fault/build/firmware.elf --board $(BOARD_NAME) \
+	$(STRICT) tools/fault_inject.sh --elf .virtulab/fault/build/firmware.elf --board $(BOARD_NAME) \
 	    --source src/auth.c | tee $(CI_DIR)/fault.txt
 
 report: ## Assemble .ci/report.md; run as: make -k footprint coverage fuzz fault report

@@ -61,7 +61,7 @@ Python 3.14.7, arm-none-eabi-gcc 15.3.1, QEMU 11.1.1. Raw output: [`baseline-run
 - **Seeded bug detection:** the write overflow is caught by a guard canary behind the frame (plus ASan/UBSan for other memory errors), not by a hardware fault. A 1-byte over-read is not reliably caught.
 - **Unit tests deliberately do not test a payload length of exactly 33.** That is why PR 4's unit tests stay green. A fix for PR 4 should add that regression test.
 - **Fault classification:** `BYPASS` = the probe test fails with "auth bypass". `denied` = probe passes. `crashed_or_hung` = no PASS/FAIL line (HardFault, infinite loop, 10 s timeout). `not_reached` = the breakpoint never fired. Crashes and hangs are reported but are neither counted as bypass nor as safe.
-- **Hardening claim:** the hardened build had 0 bypasses over 56 applied skips (78 instructions located, 22 never reached). The plain build had 2 bypasses over 36 applied skips. Both sweeps are deterministic across repeated runs (checked three times each). A clean sweep is evidence, not proof.
+- **Hardening claim:** the hardened build had 0 bypasses over 56 applied skips (78 instructions located, 22 never reached). The plain build had 2 bypasses over 36 applied skips. Both sweeps gave identical per-instruction results across repeated runs (3 runs of the plain build, 2 of the hardened build). A clean sweep is evidence, not proof.
 - **ROI inputs** in the README are illustrative. `tools/roi.py` only does arithmetic.
 - **Timing claims:** only the four measured wall times in the README (one run each, Apple M4 Pro, clean clone, `docs/runs/`). "less than 5 seconds" and every other earlier timing claim was removed.
 - **Sticky comments in `docs/demo-prs/` are assembled by `tools/ci_report.py` from local runs** (`make -k footprint coverage fuzz fault report`). They were not posted by CI. `BASELINE=feat/security-positioning` was passed explicitly; locally the default `main` has no `src/`.
@@ -78,7 +78,7 @@ Recorded because they would have produced wrong results silently.
 1. **GNU make 3.81 (macOS) ignores `.SHELLFLAGS`.** `-o pipefail` was never applied, so `make fuzz | tee` exited 0 on a crash. Fixed with a per-recipe `STRICT` prefix.
 2. **`AUTH_HARDENED` was defined twice** (Makefile default `1` overrode the header), so PR 5's one-line change did nothing. The header is now the single default.
 3. **The fault sweep was non-deterministic:** a fixed `sleep` before GDB connected, QEMU killed before its stdout was flushed, and a breakpoint `commands { continue }` block that let GDB end the batch early. Fixed (retry on refused connection, wait for QEMU to exit, straight-line GDB script). Results were stable over repeated runs afterwards. The first, flaky numbers were discarded.
-4. `docs/demo-prs/pr1-pr3.md` were regenerated after items 1 and 2 so that every recorded sha and number matches the final base.
+4. All five `docs/demo-prs/prN.md` files were regenerated from fresh runs after items 1 to 3, in clean worktrees on the final base, so every recorded sha and number matches it.
 
 ## Pre-existing engine quirk, not fixed
 

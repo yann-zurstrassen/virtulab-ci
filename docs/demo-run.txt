@@ -1,0 +1,103 @@
+# virtulab demo, run from this checkout on 2026-10-22
+# Machine: Apple M4 Pro, macOS 26.6.2, QEMU emulator version 11.1.1, arm-none-eabi-gcc (Arm GNU Toolchain 15.3.Rel1 (Build arm-15.149)) 15.3.1 20260627
+
+
+══════════════════════════════════════════════════════════════════════
+  1. Create a project: board, tests and CI in one command
+══════════════════════════════════════════════════════════════════════
+$ virtulab init -C ./virtulab-demo -b lm3s6965evb -t unit,footprint,coverage,fuzz,fault --template starter --ci github -y
+
+✅ Created:
+   .github/workflows/virtulab.yml
+   fault/probe.c
+   fuzz/fuzz.c
+   include/auth.h
+   include/crc.h
+   include/parser.h
+   src/auth.c
+   src/crc.c
+   src/parser.c
+   test/test_auth.c
+   test/test_crc.c
+   test/test_main.c
+   test/test_parser.c
+   test/test_suites.h
+   virtulab.yml
+
+Next:
+   virtulab check -C ./virtulab-demo      # validate board, wiring and tests
+   virtulab run -C ./virtulab-demo        # run the selected tests
+
+
+══════════════════════════════════════════════════════════════════════
+  2. Check the setup before running anything
+══════════════════════════════════════════════════════════════════════
+$ virtulab check
+✅ lm3s6965evb  Cortex-M3, TI Stellaris LM3S6965 (QEMU, CPU only)
+✅ unit         Unit tests on the virtual board
+✅ footprint    Flash and RAM budget
+✅ coverage     Line and branch coverage — Line and branch only, no MC/DC. Measured on a host build, not on the target.
+✅ fuzz         Fuzzing — Host-side fuzzing of the logic, not full-system fuzzing of the firmware image.
+✅ fault        Fault injection (instruction skip) — Single skip, first execution only. Not a model of physical glitches.
+
+Board check passed
+
+
+══════════════════════════════════════════════════════════════════════
+  3. First push: every selected test runs
+══════════════════════════════════════════════════════════════════════
+$ virtulab run
+── Summary ─────────────────────────────────────────────
+✅ Unit tests on the virtual board        25/25 tests passed on lm3s6965evb
+✅ Flash and RAM budget                   Flash 5,232 B (±0 B), RAM 228 B (±0 B)
+✅ Line and branch coverage               94.0% lines · 84.9% branches (109/116 lines, 56/66 branches)
+✅ Fuzzing                                0 crashes. 29,604,096 execs in 5.0s, seed 1. Host-side fuzzing of the logic.
+✅ Fault injection (instruction skip)     no bypass in 56 single-instruction skips (first execution only)
+✅ PASSED in 0.04s — 25/25 tests passed
+📝 Report written to ./virtulab-demo/.virtulab/report.md
+✅ All 5 selected checks passed
+
+══════════════════════════════════════════════════════════════════════
+  4. A teammate adds an 8 KiB history buffer
+══════════════════════════════════════════════════════════════════════
+Unit tests stay green. The footprint budget (2 KiB RAM) does not.
+$ virtulab run --only unit,footprint
+── Summary ─────────────────────────────────────────────
+✅ Unit tests on the virtual board        25/25 tests passed on lm3s6965evb
+❌ Flash and RAM budget                   Flash 5,248 B (+16 B 📈), RAM 8,420 B (+8,192 B 📈) — RAM grew by 8,192 B, above the allowed 2,048 B increase.
+⚠️ MEMORY BUDGET EXCEEDED in 0.03s — 25/25 tests passed
+📝 Report written to ./virtulab-demo/.virtulab/report.md
+❌ 1 of 2 selected checks failed
+
+══════════════════════════════════════════════════════════════════════
+  5. A teammate relaxes the parser length check by one
+══════════════════════════════════════════════════════════════════════
+All unit tests pass. Fuzzing finds the overflow.
+$ virtulab run --only unit,fuzz
+── Summary ─────────────────────────────────────────────
+✅ Unit tests on the virtual board        25/25 tests passed on lm3s6965evb
+❌ Fuzzing                                crash found: 1 crash(es), 0 regression(s). 135 execs in 0.0s, seed 1
+✅ PASSED in 0.03s — 25/25 tests passed
+📝 Report written to ./virtulab-demo/.virtulab/report.md
+❌ 1 of 2 selected checks failed
+
+══════════════════════════════════════════════════════════════════════
+  6. A teammate drops the redundant PIN comparison 'to save flash'
+══════════════════════════════════════════════════════════════════════
+All unit tests pass. A single skipped instruction now grants a wrong PIN.
+$ virtulab run --only unit,fault
+── Summary ─────────────────────────────────────────────
+✅ Unit tests on the virtual board        25/25 tests passed on lm3s6965evb
+❌ Fault injection (instruction skip)     bypass reachable: 2 of 37 single-instruction skips grant access
+✅ PASSED in 0.03s — 25/25 tests passed
+📝 Report written to ./virtulab-demo/.virtulab/report.md
+❌ 1 of 2 selected checks failed
+
+══════════════════════════════════════════════════════════════════════
+  What you get
+══════════════════════════════════════════════════════════════════════
+Everything above is driven by one file: ./virtulab-demo/virtulab.yml
+Run `virtulab ui -C ./virtulab-demo` to change the board, sensors and tests in a browser,
+`virtulab ci -C ./virtulab-demo` to see the CI workflow, and push to run it for real.
+
+Demo result: ✅ every broken change was caught

@@ -1,19 +1,23 @@
 name: 'VirtuLab CI'
-description: 'Emulate Cortex-M hardware in CI: build firmware, run its tests on a virtual board (Renode or QEMU), report footprint changes on the PR.'
+description: 'Emulate Cortex-M hardware in CI: run the tests selected in virtulab.yml (unit, footprint, coverage, fuzz, fault injection) on a virtual board and report on the PR.'
 author: 'VirtuLab'
 branding:
   icon: 'cpu'
   color: 'blue'
 
 inputs:
+  tests:
+    description: 'Run only these tests from virtulab.yml, comma separated (e.g. "unit,fuzz"). Empty = all of them'
+    required: false
+    default: ''
   board:
-    description: 'Target board. Renode: stm32f4_discovery. QEMU: lm3s6965evb, lm3s811evb, stm32vldiscovery, netduinoplus2, microbit, mps2-an385, mps2-an386, mps2-an500'
+    description: 'Overrides the board in virtulab.yml (or selects one without a file). Renode: stm32f4_discovery. QEMU: lm3s6965evb, lm3s811evb, stm32vldiscovery, netduinoplus2, microbit, mps2-an385, mps2-an386, mps2-an500. Default: lm3s6965evb'
     required: false
-    default: 'lm3s6965evb'
+    default: ''
   sources:
-    description: 'Source files or glob patterns, separated by spaces or newlines (C, C++ and assembly)'
+    description: 'Source files or glob patterns, separated by spaces or newlines (C, C++ and assembly). Default: **/*.c'
     required: false
-    default: '**/*.c'
+    default: ''
   include_dirs:
     description: 'Include directories, separated by spaces or newlines'
     required: false
@@ -39,9 +43,9 @@ inputs:
     required: false
     default: ''
   timeout:
-    description: 'Emulation timeout, e.g. 30s or 2m'
+    description: 'Emulation timeout, e.g. 30s or 2m. Default: 30s'
     required: false
-    default: '30s'
+    default: ''
   baseline_ref:
     description: 'Git ref to compare the memory footprint against. Defaults to the PR base commit, or the previous commit on push'
     required: false
@@ -82,6 +86,10 @@ outputs:
     description: 'Flash change in bytes vs the baseline (empty if no baseline)'
   ram_delta:
     description: 'RAM change in bytes vs the baseline (empty if no baseline)'
+  checks:
+    description: 'Result of every selected test, e.g. unit=pass,fuzz=fail (only with virtulab.yml)'
+  checks_failed:
+    description: 'Number of selected tests that failed (only with virtulab.yml)'
   tests_total:
     description: 'Number of unit tests run'
   tests_passed:

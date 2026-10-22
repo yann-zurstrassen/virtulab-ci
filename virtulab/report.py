@@ -112,7 +112,7 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-def render_markdown(outcome: Outcome, report_id: str = "default") -> str:
+def render_markdown(outcome: Outcome, report_id: str = "default", checks_md: str = "") -> str:
     board = outcome.board
     lines = [
         marker(report_id),
@@ -125,6 +125,8 @@ def render_markdown(outcome: Outcome, report_id: str = "default") -> str:
     if outcome.run:
         status += f" · Emulation `{outcome.run.duration:.2f}s`"
     lines += [status, ""]
+    if checks_md:
+        lines += [checks_md.rstrip(), ""]
 
     sizes = outcome.build.sizes
     if sizes:

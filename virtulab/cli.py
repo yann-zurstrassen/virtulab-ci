@@ -15,7 +15,7 @@ from .build import BuildConfig, addr2line, build
 from .emulator import run as run_emulator
 from .parse import parse_fault, parse_tests
 from .report import (
-    BUILD_FAILED, PASSED, STATUS_LABELS, Outcome, fmt_bytes, fmt_capacity, fmt_delta, marker,
+    BUILD_FAILED, FAILED, PASSED, STATUS_LABELS, Outcome, fmt_bytes, fmt_capacity, fmt_delta, marker,
     render_markdown,
 )
 
@@ -93,15 +93,15 @@ def options_from_env(env: dict[str, str]) -> Options:
 
 def options_from_args(ns: argparse.Namespace) -> Options:
     return Options(
-        board=ns.board,
-        sources=ns.sources,
+        board=ns.board or "lm3s6965evb",
+        sources=ns.sources or ["**/*.c"],
         include_dirs=ns.include,
         cflags=shlex.split(ns.cflags),
         ldflags=shlex.split(ns.ldflags),
         linker_script=ns.linker_script,
         runtime=not ns.no_runtime,
         peripherals=ns.peripherals,
-        timeout=parse_timeout(ns.timeout),
+        timeout=parse_timeout(ns.timeout or "30s"),
         baseline_ref=ns.baseline,
         max_flash_increase=parse_byte_limit(ns.max_flash_increase),
         max_ram_increase=parse_byte_limit(ns.max_ram_increase),
@@ -161,7 +161,8 @@ def _check_budgets(opts: Options, outcome: Outcome) -> None:
             )
 
 
-def execute(opts: Options) -> int:
+def run_unit(opts: Options) -> tuple[Outcome, Path, Path]:
+    """Build, measure and emulate. Returns the outcome with the project and work directories."""
     board = get_board(opts.board)
     root = opts.root.resolve()
     if not root.is_dir():
@@ -232,7 +233,18 @@ def execute(opts: Options) -> int:
                 if Path(path).resolve().is_relative_to(root):
                     location = f"{Path(path).resolve().relative_to(root).as_posix()}:{line}"
             outcome.fault.function, outcome.fault.location = function, location
+    return outcome, root, work_dir
 
+
+def execute(opts: Options) -> int:
+    outcome, root, work_dir = run_unit(opts)
+    return finish(opts, outcome, root, work_dir)
+
+
+def finish(opts: Options, outcome: Outcome, root: Path, work_dir: Path,
+           checks_md: str = "", extra_outputs: dict | None = None, extra_ok: bool = True) -> int:
+    """Print the summary, write report.md, annotate, set outputs, post the comment."""
+    result = outcome.build
     status = outcome.status
     summary = STATUS_LABELS[status]
     if outcome.run:
@@ -246,7 +258,7 @@ def execute(opts: Options) -> int:
         where = outcome.fault.location or f"pc={outcome.fault.pc:#010x}"
         print(f"💥 {outcome.fault.kind} in {outcome.fault.function or '?'} at {where}")
 
-    markdown = render_markdown(outcome, opts.report_id)
+    markdown = render_markdown(outcome, opts.report_id, checks_md)
     report_path = work_dir / "report.md"
     report_path.write_text(markdown)
     _report_diagnostics(root, outcome)
@@ -258,7 +270,7 @@ def execute(opts: Options) -> int:
         except ValueError:
             report_output = str(report_path)
         github.set_outputs({
-            "status": status,
+            "status": FAILED if status == PASSED and not extra_ok else status,
             "flash_bytes": sizes.flash if sizes else "",
             "ram_bytes": sizes.ram if sizes else "",
             "flash_delta": outcome.flash_delta,
@@ -268,6 +280,7 @@ def execute(opts: Options) -> int:
             "tests_failed": outcome.tests.failed,
             "emulation_seconds": f"{outcome.run.duration:.2f}" if outcome.run else "",
             "report_path": report_output,
+            **(extra_outputs or {}),
         })
         github.append_summary(markdown)
         if opts.comment:
@@ -275,9 +288,9 @@ def execute(opts: Options) -> int:
     else:
         print(f"📝 Report written to {os.path.relpath(report_path)}")
 
-    if status == PASSED:
-        return 0
-    return EXIT_ERROR if status == BUILD_FAILED else EXIT_FAILED
+    if status == BUILD_FAILED:
+        return EXIT_ERROR
+    return 0 if status == PASSED and extra_ok else EXIT_FAILED
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -289,8 +302,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="build, measure and emulate firmware")
-    run.add_argument("-b", "--board", default="lm3s6965evb", help="target board (see `boards`)")
-    run.add_argument("-s", "--sources", nargs="+", default=["**/*.c"], metavar="GLOB",
+    run.add_argument("-b", "--board", default=None, help="target board (see `catalog`)")
+    run.add_argument("-s", "--sources", nargs="+", default=None, metavar="GLOB",
                      help="source files or glob patterns (default: **/*.c)")
     run.add_argument("-I", "--include", action="append", default=[], metavar="DIR",
                      help="include directory (repeatable)")
@@ -302,7 +315,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("-p", "--peripherals", metavar="REPL",
                      help="extra Renode devices: a .repl file, or inline text such as "
                           "'tmp108: Sensors.TMP108 @ i2c1 0x48' (Renode boards only)")
-    run.add_argument("-t", "--timeout", default="30s", help="emulation timeout (default: 30s)")
+    run.add_argument("-t", "--timeout", default=None, help="emulation timeout (default: 30s)")
     run.add_argument("--baseline", metavar="REF",
                      help="git ref to compare the memory footprint against, e.g. main")
     run.add_argument("--max-flash-increase", metavar="BYTES",
@@ -314,10 +327,96 @@ def build_parser() -> argparse.ArgumentParser:
                      help="build/report directory inside the project (default: .virtulab)")
     run.add_argument("--comment", action="store_true",
                      help="post the report as a PR comment (GitHub Actions only)")
+    run.add_argument("--only", metavar="TESTS",
+                     help="with virtulab.yml: run only these tests, e.g. unit,fuzz")
+    run.add_argument("--skip", metavar="TESTS", help="with virtulab.yml: skip these tests")
 
     sub.add_parser("boards", help="list supported boards")
     sub.add_parser("action", help="run with GitHub Action inputs (INPUT_* variables)")
+
+    catalog = sub.add_parser("catalog", help="list boards, protocols, sensors and tests you can pick")
+    catalog.add_argument("--json", action="store_true", help="machine-readable output")
+
+    chk = sub.add_parser("check", help="validate virtulab.yml: board, wiring and test selection")
+    chk.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
+    chk.add_argument("--format", choices=["text", "markdown", "json"], default="text")
+
+    init = sub.add_parser("init", help="set up a project: pick board, sensors and tests, write CI")
+    init.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
+    init.add_argument("-b", "--board", help="board (asks if omitted)")
+    init.add_argument("-m", "--module", action="append", default=[], metavar="NAME=MODEL@BUS[:ADDR]",
+                      help="attach a sensor, e.g. temp=tmp108@i2c1:0x48 (repeatable)")
+    init.add_argument("-t", "--tests", metavar="LIST",
+                      help="comma separated tests, e.g. unit,footprint,fuzz (asks if omitted)")
+    init.add_argument("--ci", choices=["github", "gitlab", "none"], help="CI provider")
+    init.add_argument("--template", choices=["none", "starter"],
+                      help="also create sample firmware that matches the selection")
+    init.add_argument("-y", "--yes", action="store_true", help="no questions: use flags and defaults")
+    init.add_argument("--force", action="store_true", help="overwrite existing files")
+
+    ci = sub.add_parser("ci", help="print or write the CI workflow for virtulab.yml")
+    ci.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
+    ci.add_argument("--provider", choices=["github", "gitlab"], help="default: from virtulab.yml")
+    ci.add_argument("--write", action="store_true", help="write the file instead of printing it")
+
+    ui = sub.add_parser("ui", help="open the setup page in your browser")
+    ui.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
+    ui.add_argument("--port", type=int, default=8765)
+    ui.add_argument("--no-browser", action="store_true")
+
+    demo = sub.add_parser("demo", help="create a sample project and run it end to end")
+    demo.add_argument("-C", "--directory", default="virtulab-demo", help="where to create it")
+    demo.add_argument("--seconds", type=int, default=5, help="fuzzing time budget")
     return parser
+
+
+def _env_overrides(env: dict[str, str]) -> dict:
+    """Action inputs the workflow set explicitly (empty means: use virtulab.yml)."""
+    def get(name: str) -> str:
+        return env.get(f"INPUT_{name}", "").strip()
+    found = {
+        "board": get("BOARD") or None,
+        "sources": split_list(get("SOURCES")) or None,
+        "include": split_list(get("INCLUDE_DIRS")) or None,
+        "cflags": get("CFLAGS") or None,
+        "timeout": get("TIMEOUT") or None,
+    }
+    return {k: v for k, v in found.items() if v}
+
+
+def _list(value: str | None) -> list[str] | None:
+    return [p for p in re.split(r"[\s,]+", value) if p] if value else None
+
+
+def run_command(ns: argparse.Namespace) -> int:
+    """`run` and `action`: project mode when virtulab.yml exists, else the glob build."""
+    from . import config
+    from .project import run_project, select_tests
+
+    action = ns.command == "action"
+    env = dict(os.environ)
+    root = Path(env.get("INPUT_WORKING_DIRECTORY", "").strip() or ".") if action else Path(ns.directory)
+    cfg = config.load(root) if root.is_dir() else None
+    if cfg is None:
+        if not action and root.is_dir() and not any(f.suffix.lower() in (".c", ".cc", ".cpp", ".cxx", ".s") for f in root.rglob("*")):
+            raise VirtulabError(f"No virtulab.yml and no C sources in '{root}'. Set up a project first: "
+                                f"`virtulab ui -C {root}` or `virtulab init -C {root}`")
+        return execute(options_from_env(env) if action else options_from_args(ns))
+
+    if action:
+        base, overrides = options_from_env(env), _env_overrides(env)
+        only, skip = _list(env.get("INPUT_TESTS", "").strip()), None
+    else:
+        base = options_from_args(ns)
+        overrides = {k: v for k, v in {
+            "board": ns.board, "sources": ns.sources, "include": ns.include or None,
+            "cflags": ns.cflags or None, "timeout": ns.timeout}.items() if v}
+        only, skip = _list(ns.only), _list(ns.skip)
+    for key, value in overrides.items():
+        setattr(cfg, key, value)
+    if cfg.board not in BOARDS:
+        raise VirtulabError(f"Unknown board '{cfg.board}'. Run `virtulab catalog` to list boards.")
+    return run_project(select_tests(cfg, only, skip), root, base)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -329,8 +428,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{b.name:<18} {b.cpu:<11} {fmt_capacity(b.flash_size):>8} "
                       f"{fmt_capacity(b.ram_size):>8}  {b.emulator:<8}  {b.description}")
             return 0
-        opts = options_from_env(dict(os.environ)) if ns.command == "action" else options_from_args(ns)
-        return execute(opts)
+        if ns.command in ("run", "action"):
+            return run_command(ns)
+        from . import commands
+        return getattr(commands, ns.command.replace("-", "_"))(ns)
     except VirtulabError as exc:
         if github.in_actions():
             github.annotate("error", str(exc), title="VirtuLab CI configuration error")

@@ -10,6 +10,9 @@ RUN apt-get update \
         libnewlib-arm-none-eabi \
         libstdc++-arm-none-eabi-newlib \
         qemu-system-arm \
+        gcc \
+        libc6-dev \
+        gdb-multiarch \
         python3 \
         git \
         ca-certificates \
@@ -57,6 +60,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chmod +x /usr/local/bin/virtulab
 
 ENV PYTHONPATH=/opt/virtulab \
+    VIRTULAB_IN_DOCKER=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \

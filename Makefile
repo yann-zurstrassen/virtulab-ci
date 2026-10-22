@@ -67,7 +67,7 @@ coverage: ## Line/branch coverage of the unit tests (native gcov build)
 	        -c $$src -o $(BUILD_DIR)/coverage/$$(basename $$src .c).o; \
 	done
 	$(HOST_CC) -O0 -I$(RUNTIME_DIR) -c $(RUNTIME_DIR)/virtulab_test.c -o $(BUILD_DIR)/coverage/virtulab_test.o
-	$(HOST_CC) -O0 -I$(RUNTIME_DIR) -c test/host/vl_host.c -o $(BUILD_DIR)/coverage/vl_host.o
+	$(HOST_CC) -O0 -I$(RUNTIME_DIR) -c virtulab/runtime/host/vl_host.c -o $(BUILD_DIR)/coverage/vl_host.o
 	$(HOST_CC) --coverage $(BUILD_DIR)/coverage/*.o -o $(BUILD_DIR)/coverage/unit_tests
 	$(STRICT) status=0; $(BUILD_DIR)/coverage/unit_tests | tee $(BUILD_DIR)/coverage/run.log || status=$$?; \
 	for src in $(COVERED_SRC); do gcov -b -o $(BUILD_DIR)/coverage $$src; done \

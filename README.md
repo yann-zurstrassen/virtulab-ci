@@ -8,6 +8,58 @@ Emulation is the **fast layer** of the test pyramid. Hardware-in-the-loop (HIL) 
 
 ---
 
+---
+
+## 🚀 Quick start: pick board, sensors and tests, get CI
+
+Nothing to install except Docker (or the Arm toolchain, QEMU and a C compiler). `virtulab` runs in its image when your machine lacks a tool.
+
+```sh
+virtulab ui            # opens a page: pick a board, protocols, sensors and tests
+# or, from the terminal:
+virtulab init          # the same questions, answered in the shell
+virtulab check         # validate board, wiring and test selection before running
+virtulab run           # run the selected tests (--only unit,fuzz / --skip fault)
+virtulab ci --write    # (re)write the CI file
+virtulab demo          # watch the whole flow, with three broken changes that get caught
+```
+
+One file, `virtulab.yml`, drives all of it (board, sensors, tests, CI):
+
+```yaml
+version: 1
+board: stm32f4_discovery
+modules:
+  temp: { model: tmp108, bus: i2c1, address: 0x48 }
+  baro: { model: bmp180, bus: i2c1 }
+tests:
+  unit: {}
+  footprint: { flash_increase: 4K, ram_increase: 2K }
+  coverage: { min_lines: 80 }
+  fuzz: { harness: fuzz/fuzz.c, sources: [src/parser.c], seconds: 20 }
+```
+
+CI is then one step (`virtulab ci --write` creates the whole workflow), or one command for any other CI:
+
+```yaml
+- uses: yann-zurstrassen/virtulab-ci@v1
+```
+```sh
+docker run --rm -v "$PWD:/workspace" ghcr.io/yann-zurstrassen/virtulab-ci:1 run
+```
+
+| You pick | Options today |
+| :--- | :--- |
+| Board | 9 (`virtulab catalog`). Only `stm32f4_discovery` (Renode) can carry sensors; the 8 QEMU boards run the CPU only |
+| Protocol | I²C, SPI, UART (SPI and UART buses exist on the board; no SPI or UART sensor model ships yet) |
+| Sensor | TMP108 (datasheet model), BMP180 (Renode's model, lightly tested). Both I²C |
+| Tests | unit, footprint, coverage, fuzz, fault injection. Fault injection needs a QEMU board |
+
+The sample firmware `init` can create (`--template starter`) is built to pass on its first run. Its sensor drivers are written for `i2c1`. A full recorded run is in [`docs/demo-run.txt`](docs/demo-run.txt). The setup page is local only (127.0.0.1, random token).
+
+> **Honest limits.** The GitHub and GitLab files are generated and structurally validated, and the same steps run in the Docker image locally, but the workflows have not been executed on GitHub. Fuzzing is host-side, fault injection is single instruction skip, coverage is line and branch. See [docs/FIDELITY.md](docs/FIDELITY.md).
+
+
 ## 🎯 Who it's for
 
 Firmware teams in **medical, automotive and industrial** products, and any team of **20+ engineers** where the bench is shared and slow.

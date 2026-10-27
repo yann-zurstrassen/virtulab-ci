@@ -8,7 +8,7 @@
 #include "virtulab.h"
 #include "virtulab_test.h"
 
-#define SENSOR "sysbus.@BUS@.@MODULE@"
+#define SENSOR "@SIM@"
 
 static thermostat_t thermostat;
 
@@ -81,6 +81,44 @@ static void test_missing_sensor_is_reported_and_fails_safe(void)
     TEST_ASSERT_TRUE_MESSAGE(fan_is_on(), "fan must run when the sensor is unreadable");
 }
 
+static void test_tmp108_registers_hold_what_was_written(void)
+{
+    uint8_t raw[2];
+    i2c1_init();
+    /* Configuration (1), low limit (2) and high limit (3) are 16-bit, most significant byte first. */
+    TEST_ASSERT_EQUAL_INT(I2C_OK, i2c1_write_reg16(TMP108_DEFAULT_ADDR, 1, 0x1234));
+    TEST_ASSERT_EQUAL_INT(I2C_OK, i2c1_write_reg16(TMP108_DEFAULT_ADDR, 2, 0x5678));
+    TEST_ASSERT_EQUAL_INT(I2C_OK, i2c1_write_reg16(TMP108_DEFAULT_ADDR, 3, 0x9ABC));
+    TEST_ASSERT_EQUAL_INT(I2C_OK, i2c1_read_reg(TMP108_DEFAULT_ADDR, 1, raw, 2));
+    TEST_ASSERT_EQUAL_HEX16(0x1234, (raw[0] << 8) | raw[1]);
+    TEST_ASSERT_EQUAL_INT(I2C_OK, i2c1_read_reg(TMP108_DEFAULT_ADDR, 2, raw, 2));
+    TEST_ASSERT_EQUAL_HEX16(0x5678, (raw[0] << 8) | raw[1]);
+    TEST_ASSERT_EQUAL_INT(I2C_OK, i2c1_read_reg(TMP108_DEFAULT_ADDR, 3, raw, 2));
+    TEST_ASSERT_EQUAL_HEX16(0x9ABC, (raw[0] << 8) | raw[1]);
+}
+
+static void test_tmp108_temperature_register_is_read_only(void)
+{
+    int32_t mc = 0;
+    i2c1_init();
+    set_temperature("20.0");
+    TEST_ASSERT_EQUAL_INT(I2C_OK, i2c1_write_reg16(TMP108_DEFAULT_ADDR, 0, 0x7FF0));
+    TEST_ASSERT_EQUAL_INT(I2C_OK, tmp108_read_millicelsius(TMP108_DEFAULT_ADDR, &mc));
+    TEST_ASSERT_EQUAL_INT(20000, mc);
+}
+
+static void test_tmp108_saturates_at_its_twelve_bit_range(void)
+{
+    int32_t mc = 0;
+    i2c1_init();
+    set_temperature("200"); /* beyond +127.9375 */
+    TEST_ASSERT_EQUAL_INT(I2C_OK, tmp108_read_millicelsius(TMP108_DEFAULT_ADDR, &mc));
+    TEST_ASSERT_EQUAL_INT(127937, mc); /* 2047 counts */
+    set_temperature("-200"); /* beyond -128 */
+    TEST_ASSERT_EQUAL_INT(I2C_OK, tmp108_read_millicelsius(TMP108_DEFAULT_ADDR, &mc));
+    TEST_ASSERT_EQUAL_INT(-128000, mc); /* -2048 counts */
+}
+
 int test_thermostat_run(void)
 {
     UNITY_BEGIN();
@@ -89,5 +127,8 @@ int test_thermostat_run(void)
     RUN_TEST(test_fan_turns_on_when_hot);
     RUN_TEST(test_fan_hysteresis);
     RUN_TEST(test_missing_sensor_is_reported_and_fails_safe);
+    RUN_TEST(test_tmp108_registers_hold_what_was_written);
+    RUN_TEST(test_tmp108_temperature_register_is_read_only);
+    RUN_TEST(test_tmp108_saturates_at_its_twelve_bit_range);
     return UNITY_END();
 }

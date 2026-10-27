@@ -76,6 +76,14 @@ def board_info(name: str) -> dict:
 # Modules: external parts on the board.
 
 @dataclass(frozen=True)
+class Sample:
+    """The starter firmware `init --template starter` writes for a sensor (templates/starter/<id>)."""
+    suite: str  # test suite function that test_main.c calls
+    hardware: tuple[str, ...]  # files that only build for the target (excluded from native coverage)
+    extras: tuple[str, ...] = ()  # pure-logic template folders the driver builds on
+
+
+@dataclass(frozen=True)
 class Module:
     id: str
     title: str
@@ -89,6 +97,8 @@ class Module:
     sim: tuple[str, ...] = ()  # properties a test can change with vl_sim()
     gaps: str = ""  # what is not modelled
     needs_device_file: bool = False  # ships as C# in virtulab/devices
+    default_cs: str | None = None  # SPI chip-select pin the emulator model is wired to
+    sample: Sample | None = None  # starter firmware, None = the sensor has none
 
 
 MODULES = {m.id: m for m in [
@@ -98,14 +108,102 @@ MODULES = {m.id: m for m in [
            default_address=0x48, addresses=(0x48, 0x49, 0x4A, 0x4B),
            sim=("Temperature",),
            gaps="Alert pin and one-shot conversion timing are not modelled.",
-           needs_device_file=True),
+           needs_device_file=True,
+           sample=Sample("test_thermostat_run", ("src/thermostat.c", "src/tmp108.c", "test/test_thermostat.c"))),
     Module("bmp180", "Bosch BMP180 pressure and temperature sensor", "pressure", "i2c", "builtin",
            "Sensors.BMP180",
            "Barometric pressure and temperature sensor with factory calibration data.",
            default_address=0x77, addresses=(0x77,),
            sim=("Temperature", "Pressure"),
-           gaps="Renode's model. VirtuLab's sample tests check the chip ID and the raw temperature path only."),
+           gaps="Renode's model. VirtuLab's sample tests check the chip ID and the raw temperature path only.",
+           sample=Sample("test_bmp180_run", ("src/bmp180.c", "test/test_bmp180.c"))),
+    Module("ina219", "TI INA219 current and power monitor", "power", "i2c", "accurate",
+           "VirtuLab.INA219",
+           "Measures bus voltage, shunt voltage, current and power of a supply rail, 0 to 32 V.",
+           default_address=0x40, addresses=tuple(range(0x40, 0x50)),
+           sim=("BusVoltage", "Current", "ShuntResistance"),
+           gaps="Conversion time, averaging, operating modes, the bus-voltage range bit and "
+                "the overflow flag are not modelled.",
+           needs_device_file=True,
+           sample=Sample("test_ina219_run", ("src/ina219.c", "test/test_ina219.c"))),
+    Module("adxl345", "Analog Devices ADXL345 accelerometer", "accelerometer", "spi", "accurate",
+           "VirtuLab.ADXL345",
+           "3-axis accelerometer, +-2 to +-16 g, read as 16-bit values.",
+           default_cs="PA4",
+           sim=("AccelerationX", "AccelerationY", "AccelerationZ", "Responding"),
+           gaps="SPI mode, interrupts, FIFO, tap detection, offset registers and output data "
+                "rate are not modelled. Output reads zero until the Measure bit is set.",
+           needs_device_file=True,
+           sample=Sample("test_adxl345_run", ("src/adxl345.c", "test/test_adxl345.c"))),
+    Module("mpu6050", "InvenSense MPU-6050 6-axis motion sensor", "imu", "i2c", "accurate",
+           "VirtuLab.MPU6050",
+           "3-axis accelerometer and 3-axis gyroscope with a temperature sensor.",
+           default_address=0x68, addresses=(0x68, 0x69),
+           sim=("AccelerationX", "AccelerationY", "AccelerationZ", "AngularRateX", "AngularRateY",
+                "AngularRateZ", "Temperature"),
+           gaps="Sample-rate divider, filter, FIFO, interrupts, the auxiliary I2C master and "
+                "self-test are not modelled. Sensor values read zero while the chip sleeps.",
+           needs_device_file=True,
+           sample=Sample("test_mpu6050_run", ("src/mpu6050.c", "test/test_mpu6050.c"))),
+    Module("sht31", "Sensirion SHT31 temperature and humidity sensor", "humidity", "i2c", "accurate",
+           "VirtuLab.SHT31",
+           "Digital humidity and temperature sensor with CRC-protected 16-bit results.",
+           default_address=0x44, addresses=(0x44, 0x45),
+           sim=("Temperature", "Humidity", "CorruptCrc", "ConversionTime"),
+           gaps="Alert thresholds and ART mode are not modelled, and clock stretching is not charged "
+                "any time. An early read returns 0xFF bytes, where a real chip would not acknowledge it.",
+           needs_device_file=True,
+           sample=Sample("test_sht31_run", ("src/sht31.c", "test/test_sht31.c"), extras=("clock",))),
+    Module("max31855", "Maxim MAX31855 thermocouple converter", "thermocouple", "spi", "accurate",
+           "VirtuLab.MAX31855",
+           "Reads a K-type thermocouple as a 32-bit frame with cold-junction and fault bits.",
+           default_cs="PB0",
+           sim=("ThermocoupleTemperature", "InternalTemperature", "OpenCircuit", "ShortToGround",
+                "ShortToVcc", "Responding"),
+           gaps="Conversion time and thermocouple type limits are not modelled; the value is current.",
+           needs_device_file=True,
+           sample=Sample("test_max31855_run", ("src/max31855.c", "test/test_max31855.c"))),
+    Module("w25q128", "Winbond W25Q128 SPI flash (16 MiB)", "flash", "spi", "accurate",
+           "VirtuLab.W25Q128",
+           "NOR flash: read, page program and erase, with the write-enable and busy rules.",
+           default_cs="PB1",
+           sim=("BusyPolls", "Responding"),
+           gaps="Real program and erase times (use BusyPolls), fast-read, dual and quad modes, "
+                "suspend and the security registers are not modelled.",
+           needs_device_file=True,
+           sample=Sample("test_w25q128_run", ("src/w25q128.c", "test/test_w25q128.c"))),
+    Module("at_modem", "Generic AT-command cellular modem", "modem", "uart", "accurate",
+           "VirtuLab.ATModem",
+           "Cellular modem speaking V.250 and 3GPP TS 27.007 AT commands at 115200 baud.",
+           sim=("Signal", "Registration", "SimReady", "Silent", "Failing"),
+           gaps="Only AT, ATE0/1, +CSQ, +CREG?, +CPIN? and +CGMI. No data connections or SMS, "
+                "and replies come at once.",
+           needs_device_file=True,
+           sample=Sample("test_modem_run", ("src/modem.c", "test/test_modem.c"))),
+    Module("modbus_rtu", "Generic Modbus RTU temperature and humidity transmitter", "modbus", "uart",
+           "accurate", "VirtuLab.ModbusRtuSlave",
+           "RS-485 style sensor answering Modbus functions 3, 4 and 6 at 9600 baud.",
+           sim=("Temperature", "Humidity", "SlaveAddress", "Silent", "CorruptCrc"),
+           gaps="Frames are taken as eight bytes, not by the 3.5-character silence. Functions "
+                "other than 3, 4 and 6 answer an exception.",
+           needs_device_file=True,
+           sample=Sample("test_modbus_rtu_run", ("src/modbus_rtu.c", "test/test_modbus_rtu.c"),
+                         extras=("modbus",))),
+    Module("nmea_gps", "Generic NMEA GPS receiver", "gps", "uart", "accurate",
+           "VirtuLab.NMEAGps",
+           "GPS module sending NMEA 0183 position sentences at 9600 baud (u-blox, MediaTek and others).",
+           sim=("Latitude", "Longitude", "Altitude", "Satellites", "HasFix", "CorruptChecksum",
+                "Silent", "EmitFix"),
+           gaps="Only GGA sentences, sent when the test asks. No baud-rate pacing, no host "
+                "commands, no timing of fix acquisition.",
+           needs_device_file=True,
+           sample=Sample("test_gps_run", ("src/gps.c", "test/test_gps.c"), extras=("nmea",))),
 ]}
+
+
+def _datasheet_summary(module_id: str) -> dict | None:
+    from . import datasheets
+    return datasheets.summary(module_id)
 
 
 def module_info(m: Module) -> dict:
@@ -113,6 +211,7 @@ def module_info(m: Module) -> dict:
         "id": m.id, "title": m.title, "kind": m.kind, "protocol": m.protocol, "tier": m.tier,
         "summary": m.summary, "default_address": m.default_address,
         "addresses": list(m.addresses), "sim": list(m.sim), "gaps": m.gaps,
+        "default_cs": m.default_cs, "datasheet": _datasheet_summary(m.id),
     }
 
 

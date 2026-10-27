@@ -58,6 +58,57 @@ needs an emulator that can attach devices (the repository's Renode path does thi
 | `stm32f4_discovery` (+ TMP108 on I2C) | Renode | `examples/thermostat`. 🚧 **Not verified here**: Renode is not installed on the machine this was written on, so its peripheral status is not assessed |
 | `lm3s811evb`, `stm32vldiscovery`, `netduinoplus2`, `microbit`, `mps2-*` | QEMU | Listed by the engine and covered by its end-to-end tests in CI. 🚧 **Not assessed** for fidelity here |
 
+## Sensor models in the VirtuLab device library
+
+The exact statements each model implements, and where, are in [DATASHEETS.md](DATASHEETS.md).
+
+| Model | Protocol | Source | Compared with a real chip? |
+| :--- | :--- | :--- | :--- |
+| `VirtuLab.TMP108` | I²C | TMP108 datasheet | No |
+| `Sensors.BMP180` | I²C | Renode's built-in model | No (VirtuLab's sample tests check the chip ID and the raw temperature path only) |
+| `VirtuLab.INA219` | I²C | INA219 datasheet | No |
+| `VirtuLab.MPU6050` | I²C | MPU-6050 register map | No |
+| `VirtuLab.SHT31` | I²C | SHT3x datasheet | No |
+| `VirtuLab.ADXL345` | SPI | ADXL345 datasheet, 4-wire SPI | No |
+| `VirtuLab.MAX31855` | SPI | MAX31855 datasheet | No |
+| `VirtuLab.W25Q128` | SPI | W25Q128 datasheet, standard instructions | No |
+| `VirtuLab.NMEAGps` | UART | NMEA 0183 sentence format (GGA) | No, and it is a generic receiver, not a specific module |
+| `VirtuLab.ATModem` | UART | ITU-T V.250 and 3GPP TS 27.007 | No, and it is a generic modem |
+| `VirtuLab.ModbusRtuSlave` | UART | Modbus over serial line, application protocol V1.1b3 | No, and the register layout is typical, not a product's |
+
+The datasheet details above were written from memory of the documents and have not been checked line by line against
+the current revisions. Treat a row as a claim to verify, which is what the map makes easy.
+
+"Datasheet model" in the catalog means written from the document and exercised by the sample firmware's
+tests. It does not mean verified against silicon. What each model leaves out is listed in its source file and in
+`virtulab catalog`. Points that matter for the SPI and UART models:
+
+- The emulator's SPI block does not see chip select. Every SPI bus gets a multiplexer that watches the GPIO pins
+  the firmware drives (`cs:` in `virtulab.yml`) and hands each transaction to the device whose line is low. The
+  lines are assumed to idle high, as pull-ups make them on a real board. SPI mode (CPOL/CPHA) is not checked,
+  so a driver with the wrong mode still passes.
+- A UART carries one device in the emulator (a hub joins the two ends).
+- The GPS, modem and Modbus models answer at once and only when the test or the firmware asks. Bytes are not paced by baud rate, so a wrong baud rate or a driver too slow to drain the UART is not caught. The GPS sends a sentence only when the test asks for it (`EmitFix`).
+
+## Time
+
+Delays and device latencies run on the emulator's **virtual clock**, not the host's, so a run gives the same
+answer on any machine. Firmware gets `millis()` and `delay_ms()` from SysTick (the starter's `clock.c`), set to the
+16 MHz reset clock. Device models measure from the same clock: the SHT31 does not answer a read until
+`ConversionTime` (15.5 ms by default) has passed, and a test can stretch it to check the driver gives up.
+
+What the spike on the SHT31 showed:
+
+- **Delays by SysTick are exact; delays by loop count are not.** The emulated CPU runs about 10,000 iterations of a
+  simple loop per millisecond, roughly six times what a 16 MHz Cortex-M4 does. A "wait 100000 polls" timeout is
+  therefore several times shorter in the emulator than on the board. Wait by `delay_ms()`, not by counting.
+- **The CPU speed cannot simply be lowered to match.** Setting a realistic speed (`PerformanceInMips`) made the emulated
+  STM32 I2C block reject transfers ("writing data in improper state") from about 32 MIPS downward, even with the
+  SysTick interrupt switched off. The cause is not understood. The speed is left at Renode's default.
+- **Bus transfers take no time on the CPU side** and the I2C block paces bytes at 100 µs, whatever the driver's clock
+  setting; transfer time is not a modelled quantity.
+- An early read cannot be refused as a NACK (a model can only return bytes), so the SHT31 returns 0xFF bytes.
+
 ## Known divergences from real hardware
 
 These hold for emulators in general and for this setup in particular. None of them is measured by this repo.

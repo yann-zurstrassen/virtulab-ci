@@ -235,7 +235,8 @@ def load(path):
         raise YamlError(f"{path}: {exc}") from None
 
 
-_PLAIN = re.compile(r"[A-Za-z0-9_./*+@-][A-Za-z0-9_./*+@ -]*")
+# A plain scalar may not start with * (an alias) or @ (reserved); other YAML parsers reject it.
+_PLAIN = re.compile(r"[A-Za-z0-9_./+-][A-Za-z0-9_./*+@ -]*")
 
 
 def _dump_scalar(value) -> str:

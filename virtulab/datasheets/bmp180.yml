@@ -1,0 +1,36 @@
+# The BMP180 is Renode's own model: "model" stays empty because the code is not in this repository.
+# The rows say what VirtuLab's sample firmware and tests check against it.
+part: "BMP180"
+manufacturer: "Bosch Sensortec"
+title: "Bosch BMP180 pressure and temperature sensor"
+document: "BMP180 datasheet (search 'BMP180' on bosch-sensortec.com), register map and calibration"
+product_page: "https://www.bosch-sensortec.com/products/environmental-sensors/pressure-sensors/bmp180/"
+interface: "I²C, fixed 7-bit address 0x77"
+rows:
+  - topic: "I²C address"
+    datasheet: "The address is fixed at 0x77."
+    status: modelled
+    model: "catalog.py#addresses=(0x77,)"
+    driver: "templates/starter/bmp180/include/bmp180.h#BMP180_ADDR"
+  - topic: "Chip ID"
+    datasheet: "Register 0xD0 reads 0x55."
+    status: modelled
+    driver: "templates/starter/bmp180/src/bmp180.c#BMP180_REG_CHIP_ID"
+    test: "templates/starter/bmp180/test/test_bmp180.c#test_bmp180_reports_its_chip_id"
+    note: "Renode's model."
+  - topic: "Start a temperature conversion"
+    datasheet: "Writing 0x2E to the control register 0xF4 starts a temperature measurement. The raw 16-bit result (UT) is read from registers 0xF6 (high byte) and 0xF7."
+    status: modelled
+    driver: "templates/starter/bmp180/src/bmp180.c#BMP180_CMD_TEMPERATURE"
+    test: "templates/starter/bmp180/test/test_bmp180.c#test_bmp180_raw_temperature_follows_the_environment"
+    note: "Renode's model. The test only checks that a warmer sensor gives a larger raw value."
+  - topic: "Calibration coefficients"
+    datasheet: "Eleven factory coefficients (AC1 to MD) in registers 0xAA to 0xBF, used by the datasheet's formulas to turn raw values into °C and Pa."
+    status: unchecked
+    note: "Renode's model provides them; the sample firmware does not read them, so the true temperature and pressure formulas are not exercised."
+  - topic: "Pressure conversion"
+    datasheet: "Control register value 0x34 plus the oversampling setting starts a pressure measurement (raw value UP)."
+    status: unchecked
+  - topic: "Conversion time and soft reset"
+    datasheet: "A conversion takes up to 4.5 ms (more with oversampling); register 0xE0 with 0xB6 resets the chip."
+    status: unchecked

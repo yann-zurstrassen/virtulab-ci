@@ -15,8 +15,9 @@ import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
-from .. import VirtulabError, catalog, cigen, config, subprocess_env
+from .. import VirtulabError, catalog, cigen, config, datasheets, subprocess_env
 from ..check import check
 from ..scaffold import apply_defaults, scaffold
 
@@ -100,7 +101,8 @@ def make_handler(root: Path, token: str):
         def do_GET(self):
             if not self._host_ok():
                 return self._json({"error": "bad host"}, HTTPStatus.FORBIDDEN)
-            path = self.path.split("?")[0]
+            path, _, query = self.path.partition("?")
+            params = parse_qs(query)
             if path == "/":
                 return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
             if not self._authorized():
@@ -114,6 +116,13 @@ def make_handler(root: Path, token: str):
                                        "config": existing.to_dict() if existing else None})
                 if path == "/api/run":
                     return self._json(runs.status())
+                if path == "/api/datasheet":
+                    return self._json(datasheets.load(params["module"][0]))
+                if path == "/api/source":
+                    return self._json(datasheets.source_window(
+                        params["module"][0], params["path"][0], int(params["line"][0])))
+            except (KeyError, IndexError, ValueError):
+                return self._json({"error": "bad request"}, HTTPStatus.BAD_REQUEST)
             except VirtulabError as exc:
                 return self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)

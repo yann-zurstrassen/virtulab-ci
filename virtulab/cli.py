@@ -15,7 +15,7 @@ from .build import BuildConfig, addr2line, build
 from .emulator import run as run_emulator
 from .parse import parse_fault, parse_tests
 from .report import (
-    BUILD_FAILED, FAILED, PASSED, STATUS_LABELS, Outcome, fmt_bytes, fmt_capacity, fmt_delta, marker,
+    BUILD_FAILED, CRASHED, FAILED, PASSED, STATUS_LABELS, TIMEOUT, Outcome, fmt_bytes, fmt_capacity, fmt_delta, marker,
     render_markdown,
 )
 
@@ -223,17 +223,30 @@ def run_unit(opts: Options) -> tuple[Outcome, Path, Path]:
             print("🎛️  Emulator commands from vl_sim():")
             for line in outcome.run.sim_commands:
                 print(f"  {line}")
-
         outcome.tests = parse_tests(outcome.run.output)
         outcome.fault = parse_fault(outcome.run.output)
         if outcome.fault:
-            function, location = addr2line(result.elf, outcome.fault.pc)
-            if location and Path(location).is_absolute():
-                path, _, line = location.rpartition(":")
-                if Path(path).resolve().is_relative_to(root):
-                    location = f"{Path(path).resolve().relative_to(root).as_posix()}:{line}"
-            outcome.fault.function, outcome.fault.location = function, location
+            outcome.fault.function, outcome.fault.location = _locate(result.elf, outcome.fault.pc, root)
+        if outcome.run.timed_out and outcome.run.timeout_pc is not None:
+            function, location = _locate(result.elf, outcome.run.timeout_pc, root)
+            outcome.timeout_location = " ".join(filter(None, (function, f"({location})" if location else None))) \
+                or f"pc={outcome.run.timeout_pc:#010x}"
+            print(f"⏱️  Timed out. The CPU was still in {outcome.timeout_location}")
+        if outcome.run.model_warnings and outcome.status in (FAILED, TIMEOUT, CRASHED):
+            print("🔌 The sensor models reported:")
+            for line in outcome.run.model_warnings:
+                print(f"  {line}")
     return outcome, root, work_dir
+
+
+def _locate(elf: Path, pc: int, root: Path) -> tuple[str | None, str | None]:
+    """(function, "file:line") of an address, with the file relative to the project when it is inside it."""
+    function, location = addr2line(elf, pc)
+    if location and Path(location).is_absolute():
+        path, _, line = location.rpartition(":")
+        if Path(path).resolve().is_relative_to(root):
+            location = f"{Path(path).resolve().relative_to(root).as_posix()}:{line}"
+    return function, location
 
 
 def execute(opts: Options) -> int:
@@ -363,6 +376,11 @@ def build_parser() -> argparse.ArgumentParser:
     ui.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--no-browser", action="store_true")
+
+    ds = sub.add_parser("datasheet", help="show where a sensor's datasheet is implemented in the code")
+    ds.add_argument("module", nargs="?", help="sensor id (see `virtulab catalog`); omit to list them")
+    ds.add_argument("--markdown", action="store_true", help="print as Markdown (all sensors when none is named)")
+    ds.add_argument("--issues", action="store_true", help="print the datasheet problems found so far, as Markdown")
 
     demo = sub.add_parser("demo", help="create a sample project and run it end to end")
     demo.add_argument("-C", "--directory", default="virtulab-demo", help="where to create it")

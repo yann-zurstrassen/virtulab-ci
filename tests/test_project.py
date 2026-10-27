@@ -14,9 +14,11 @@ from pathlib import Path
 
 from virtulab import config
 from virtulab.cli import main
+from virtulab.emulator import RENODE
 from virtulab.ui.server import make_handler
 
 HAVE_TOOLS = all(shutil.which(t) for t in ("arm-none-eabi-gcc", "qemu-system-arm", "cc", "gcov"))
+HAVE_RENODE = bool(shutil.which(RENODE))
 
 
 def run_cli(*args: str) -> tuple[int, str]:
@@ -24,6 +26,86 @@ def run_cli(*args: str) -> tuple[int, str]:
     with redirect_stdout(out):
         code = main(list(args))
     return code, out.getvalue()
+
+
+SENSORS = ["-m", "temp=tmp108@i2c1", "-m", "baro=bmp180@i2c1", "-m", "power=ina219@i2c1",
+           "-m", "imu=mpu6050@i2c1", "-m", "air=sht31@i2c1",
+           "-m", "accel=adxl345@spi1", "-m", "couple=max31855@spi1", "-m", "storage=w25q128@spi1",
+           "-m", "gps=nmea_gps@usart1", "-m", "modem=at_modem@usart3", "-m", "rs485=modbus_rtu@uart4"]
+
+# (file, correct code, broken code, a sample test that must fail because of it)
+SEEDED_BUGS = [
+    ("src/adxl345.c", "#define COUNTS_PER_G 256", "#define COUNTS_PER_G 128",
+     "test_adxl345_measures_gravity_on_the_z_axis"),
+    ("src/nmea.c", "if (sum != (uint8_t)((high << 4) | low)) {", "if (0) {",
+     "test_gps_rejects_a_corrupted_sentence"),
+    ("src/ina219.c", "*milliwatts = (int32_t)raw * 2;", "*milliwatts = (int32_t)raw * 3;",
+     "test_ina219_measures_bus_voltage_current_and_power"),
+    ("src/mpu6050.c", "MPU6050_REG_POWER_MANAGEMENT_1, 0x00)", "MPU6050_REG_POWER_MANAGEMENT_1, 0x40)",
+     "test_mpu6050_measures_gravity"),
+    ("src/sht31.c", "if (sht31_crc8(raw[0], raw[1]) != raw[2] || sht31_crc8(raw[3], raw[4]) != raw[5]) {",
+     "if (0) {", "test_sht31_rejects_a_result_with_a_bad_checksum"),
+    ("src/sht31.c", "    delay_ms(SHT31_CONVERSION_MS);\n", "",
+     "test_sht31_measures_temperature_and_humidity"),
+    ("src/max31855.c", "if (frame & (1u << 16)) {", "if (0) {", "test_max31855_reports_each_fault"),
+    ("src/w25q128.c", "if ((status = w25q128_wait_ready()) != W25Q128_OK) {", "if (0) {",
+     "test_w25q128_waits_while_the_chip_is_busy"),
+    ("src/w25q128.c", "size_t chunk = len < room ? len : room;",
+     "size_t chunk = len < W25Q128_PAGE_SIZE ? len : W25Q128_PAGE_SIZE;",
+     "test_w25q128_write_across_a_page_boundary"),
+    ("src/modem.c", "*dbm = -113 + 2 * rssi;", "*dbm = -113 + rssi;", "test_modem_signal_strength_in_dbm"),
+    ("src/modem.c", "if (rssi == 99) {", "if (0) {", "test_modem_unknown_signal_is_not_a_number"),
+    ("src/modbus.c", "if (frame[len - 2u] != (uint8_t)crc || frame[len - 1u] != (uint8_t)(crc >> 8)) {",
+     "if (0) {", "test_modbus_rtu_refuses_an_answer_with_a_wrong_crc"),
+    ("src/modbus_rtu.c", "(int32_t)(int16_t)registers[1] * 100", "(int32_t)registers[1] * 100",
+     "test_modbus_rtu_reads_negative_temperature"),
+]
+
+
+@unittest.skipUnless(HAVE_TOOLS and HAVE_RENODE, "the toolchain and Renode are required")
+class SensorRunTest(unittest.TestCase):
+    """Sample firmware for every sensor runs green on Renode, and its tests catch seeded driver bugs."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp()).resolve()
+        code, out = run_cli("init", "-C", str(cls.tmp), "-b", "stm32f4_discovery", "-t", "unit",
+                            *SENSORS, "--template", "starter", "--ci", "none", "-y")
+        assert code == 0, out
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def setUp(self):
+        self.snapshot = {p: p.read_text() for p in self.tmp.rglob("*.[ch]")}
+        self.addCleanup(lambda: [p.write_text(t) for p, t in self.snapshot.items()])
+
+    def run_unit(self):
+        return run_cli("run", "-C", str(self.tmp), "--only", "unit")
+
+    def test_all_eleven_sensors_pass_together(self):
+        code, out = self.run_unit()
+        self.assertEqual(code, 0, out)
+        self.assertNotIn(":FAIL", out)
+        for name in ("test_adxl345_disconnected_sensor_is_detected", "test_gps_rejects_a_corrupted_sentence",
+                     "test_bmp180_reports_its_chip_id", "test_fan_turns_on_when_hot",
+                     "test_ina219_saturates_at_the_end_of_its_shunt_range",
+                     "test_mpu6050_must_be_woken_from_sleep", "test_sht31_crc_matches_the_datasheet_example",
+                     "test_max31855_detects_a_disconnected_chip", "test_w25q128_write_across_a_page_boundary",
+                     "test_modem_starts_and_turns_echo_off", "test_modbus_rtu_reads_temperature_and_humidity"):
+            self.assertIn(f"{name}:PASS", out)
+
+    def test_seeded_driver_bugs_are_caught(self):
+        for rel, good, bad, _ in SEEDED_BUGS:
+            path = self.tmp / rel
+            text = path.read_text()
+            self.assertIn(good, text, f"{rel}: the sample changed, update the seeded bug")
+            path.write_text(text.replace(good, bad))
+        code, out = self.run_unit()
+        self.assertEqual(code, 1, out)
+        for _, _, _, caught_by in SEEDED_BUGS:
+            self.assertIn(f"{caught_by}:FAIL", out)
 
 
 class InitTest(unittest.TestCase):
@@ -49,6 +131,59 @@ class InitTest(unittest.TestCase):
         self.assertIn("sysbus.i2c1.baro", (self.tmp / "test/test_bmp180.c").read_text())
         self.assertIn("#define BMP180_ADDR 0x77", (self.tmp / "include/bmp180.h").read_text())
         self.assertIn("src/bmp180.c", cfg.tests["coverage"]["exclude"])
+
+    def test_init_writes_sample_firmware_for_spi_and_uart_sensors(self):
+        code, out = run_cli("init", "-C", str(self.tmp), "-b", "stm32f4_discovery",
+                            "-m", "accel=adxl345@spi1", "-m", "gps=nmea_gps@usart1",
+                            "-t", "unit,coverage", "--template", "starter", "-y")
+        self.assertEqual(code, 0, out)
+        for path in ("src/spi.c", "src/adxl345.c", "src/uart.c", "src/gps.c", "src/nmea.c",
+                     "include/stm32f4_regs.h", "test/test_adxl345.c", "test/test_gps.c", "test/test_nmea.c"):
+            self.assertTrue((self.tmp / path).is_file(), path)
+        self.assertFalse((self.tmp / "src/i2c.c").exists())  # only drivers for the protocols in use
+        main_c = (self.tmp / "test/test_main.c").read_text()
+        self.assertIn("test_adxl345_run", main_c)
+        self.assertIn("test_gps_run", main_c)
+        self.assertIn("test_nmea_run", main_c)
+        self.assertIn('"sysbus.spi1.spi1_mux.accel"', (self.tmp / "test/test_adxl345.c").read_text())
+        self.assertIn('"sysbus.gps"', (self.tmp / "test/test_gps.c").read_text())
+        exclude = config.load(self.tmp).tests["coverage"]["exclude"]
+        self.assertIn("src/gps.c", exclude)
+        self.assertNotIn("src/nmea.c", exclude)  # pure logic is measured on the host
+
+    def test_every_sensor_with_sample_firmware_generates_a_complete_project_alone(self):
+        from virtulab import catalog
+        board_buses = catalog.board_buses("stm32f4_discovery")
+        for module in catalog.MODULES.values():
+            if not module.sample:
+                continue
+            with self.subTest(module.id):
+                root = self.tmp / module.id
+                bus = next(b for b, kind in board_buses.items() if kind == module.protocol)
+                code, out = run_cli("init", "-C", str(root), "-b", "stm32f4_discovery", "-m", f"s={module.id}@{bus}",
+                                    "--template", "starter", "--ci", "none", "-y")
+                self.assertEqual(code, 0, out)
+                suite = module.sample.suite
+                self.assertIn(f"{suite}();", (root / "test/test_main.c").read_text())
+                tests = "".join(p.read_text() for p in (root / "test").glob("test_*.c"))
+                self.assertRegex(tests, rf"int {suite}\(void\)")
+                for file in module.sample.hardware:
+                    self.assertTrue((root / file).is_file(), file)
+                self.assertNotIn("@", "".join(p.read_text() for p in (root / "src").glob("*.c")
+                                              if "@" in p.read_text()), "an unreplaced placeholder")
+
+    def test_sample_drivers_refuse_other_buses(self):
+        for module in ("a=adxl345@spi2", "a=nmea_gps@uart5"):
+            code, _ = run_cli("init", "-C", str(self.tmp), "-b", "stm32f4_discovery",
+                              "-m", module, "--template", "starter", "-y")
+            self.assertEqual(code, 2, module)
+            self.assertFalse((self.tmp / "virtulab.yml").exists())
+
+    def test_sample_drivers_follow_the_configured_chip_select(self):
+        code, out = run_cli("init", "-C", str(self.tmp), "-b", "stm32f4_discovery",
+                            "-m", "accel=adxl345@spi1", "--template", "starter", "-y")
+        self.assertEqual(code, 0, out)
+        self.assertIn("#define ADXL345_CS {0x40020000u, 4, 3}", (self.tmp / "include/adxl345.h").read_text())
 
     def test_init_refuses_bad_combinations_and_overwrites(self):
         code, _ = run_cli("init", "-C", str(self.tmp), "-b", "lm3s6965evb",
@@ -217,6 +352,20 @@ class UiServerTest(unittest.TestCase):
         self.assertEqual(data["exit_code"], 0, data["output"])
         self.assertIn("4/4 tests passed", data["output"])
         self.assertIn("Unit tests on the virtual board", data["report"])
+
+    def test_the_page_offers_and_saves_spi_and_uart_sensors(self):
+        catalog = self.call("/api/catalog")[1]
+        by_protocol = {m["id"]: m["protocol"] for m in catalog["modules"]}
+        self.assertEqual({"adxl345": "spi", "nmea_gps": "uart"}, {k: by_protocol[k] for k in ("adxl345", "nmea_gps")})
+        cfg = {"board": "stm32f4_discovery", "tests": {"unit": {}}, "modules": {
+            "accel": {"model": "adxl345", "bus": "spi1"}, "gps": {"model": "nmea_gps", "bus": "usart1"}}}
+        status, data = self.call("/api/save", {"config": cfg, "sample": True, "write_ci": False})
+        self.assertEqual(status, 200, data)
+        status, data = self.call("/api/check", {"config": cfg})
+        self.assertEqual(status, 200, data)
+        self.assertTrue(data["ok"], data)
+        self.assertTrue((self.tmp / "src/adxl345.c").is_file())
+        self.assertIn("accel: { model: adxl345, bus: spi1 }", (self.tmp / "virtulab.yml").read_text())
 
     def test_invalid_input_is_a_400_with_a_message(self):
         status, data = self.call("/api/check", {"config": {"board": "nope"}})

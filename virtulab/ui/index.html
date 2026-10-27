@@ -91,6 +91,35 @@
   .status { font-weight: 600; }
   .status.pass { color: var(--ok); } .status.fail { color: var(--bad); }
   .sr { position: absolute; left: -9999px; }
+  .cardwrap { display: flex; flex-direction: column; gap: 4px; }
+  .cardwrap .card { flex: 1; }
+  button.link { background: none; border: 0; padding: 0 2px; font: inherit; font-size: 13px; color: var(--accent);
+    cursor: pointer; text-align: left; text-decoration: underline; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text);
+    padding: 0; width: min(1100px, 96vw); max-height: 92vh; }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  dialog .dhead { display: flex; justify-content: space-between; gap: 12px; padding: 16px 20px 8px; }
+  dialog .dhead h2 { font-size: 18px; margin: 0; }
+  dialog .dbody { padding: 0 20px 20px; overflow: auto; max-height: calc(92vh - 90px); }
+  dialog table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  dialog th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--panel); }
+  dialog td { vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
+  dialog td.says b { display: block; }
+  dialog td.says small { color: var(--muted); display: block; margin-top: 2px; }
+  .st { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--chip); white-space: nowrap; }
+  .st.modelled { color: var(--ok); } .st.simplified, .st.unchecked { color: var(--warn); }
+  .st.not-modelled { color: var(--bad); }
+  .places { display: flex; flex-wrap: wrap; gap: 4px; }
+  .place { font: 12px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--chip); color: var(--text); padding: 2px 6px; cursor: pointer; }
+  .place[aria-expanded="true"] { border-color: var(--accent); background: var(--sel); }
+  .place.missing { color: var(--bad); cursor: default; }
+  .snippet { margin-top: 6px; }
+  .snippet .meta { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); margin-bottom: 2px; }
+  .snippet pre { max-height: 260px; }
+  .snippet .hl { background: rgba(109, 151, 255, .28); display: inline-block; width: 100%; }
+  .summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
 </style>
 </head>
 <body>
@@ -169,6 +198,11 @@
     </div>
   </aside>
 </main>
+<dialog id="datasheet" aria-labelledby="ds-title">
+  <div class="dhead"><div><h2 id="ds-title"></h2><div class="hint" id="ds-sub" style="margin:2px 0 0"></div></div>
+    <button class="btn" id="ds-close" autofocus aria-label="Close datasheet map">Close</button></div>
+  <div class="dbody"><div class="summary" id="ds-summary"></div><div id="ds-table"></div></div>
+</dialog>
 <div id="toast" role="status"></div>
 
 <script>
@@ -203,7 +237,8 @@ const kib = (n) => n >= 1048576 ? (n / 1048576) + " MiB" : (n / 1024) + " KiB";
 function config() {
   const modules = {};
   for (const [name, m] of Object.entries(state.modules))
-    modules[name] = { model: m.model, bus: m.bus, ...(m.address != null ? { address: m.address } : {}) };
+    modules[name] = { model: m.model, bus: m.bus, ...(m.address != null ? { address: m.address } : {}),
+      ...(m.cs ? { cs: m.cs } : {}) };
   const tests = {};
   for (const [id, opts] of Object.entries(state.tests)) tests[id] = { ...opts };
   return { ...state.extra, version: 1, board: state.board, modules, tests,
@@ -249,13 +284,18 @@ function renderSensors() {
   for (const m of catalog.modules) {
     if (state.filter && m.protocol !== state.filter) continue;
     const usable = Object.values(buses).includes(m.protocol);
-    grid.append(el("button", { class: "card" + (usable ? "" : " off"), disabled: !usable,
-      onclick: () => addModule(m) },
-      el("b", {}, m.title), el("small", {}, m.summary),
-      el("span", { class: "badge " + (m.tier === "accurate" ? "ok" : "warn") },
-        m.tier === "accurate" ? "datasheet model" : "built-in model"),
-      el("span", { class: "badge" }, m.protocol.toUpperCase()),
-      m.gaps ? el("small", {}, "Not modelled: " + m.gaps) : ""));
+    const ds = m.datasheet, parts = ds ? Object.values(ds.statuses).reduce((a, b) => a + b, 0) : 0;
+    grid.append(el("div", { class: "cardwrap" },
+      el("button", { class: "card" + (usable ? "" : " off"), disabled: !usable, onclick: () => addModule(m) },
+        el("b", {}, m.title), el("small", {}, m.summary),
+        el("span", { class: "badge " + (m.tier === "accurate" ? "ok" : "warn") },
+          m.tier === "accurate" ? "datasheet model" : "built-in model"),
+        el("span", { class: "badge" }, m.protocol.toUpperCase()),
+        m.gaps ? el("small", {}, "Not modelled: " + m.gaps) : ""),
+      ds ? el("button", { class: "link", onclick: () => openDatasheet(m.id) },
+        `Datasheet map · ${ds.statuses.modelled || 0} of ${parts} modelled` +
+        (ds.unverified ? ` · ${ds.unverified} unverified` : " · all cited") +
+        (ds.issues ? ` · ${ds.issues} datasheet issue${ds.issues === 1 ? "" : "s"}` : "")) : ""));
   }
   const list = $("attached"); list.replaceChildren();
   const names = Object.keys(state.modules);
@@ -277,6 +317,11 @@ function renderSensors() {
           el("option", { value: a, selected: a === m.address }, hex(a))));
       row.append(el("label", {}, "address", addrSel));
     }
+    if (mod.default_cs) {
+      row.append(el("label", {}, "chip select", el("input", { type: "text", size: 5, value: m.cs || mod.default_cs,
+        "aria-label": `Chip-select pin of ${name}`, onchange: (e) => { m.cs = e.target.value.trim().toUpperCase(); refresh(); } })));
+    }
+    if (mod.datasheet) row.append(el("button", { class: "link", onclick: () => openDatasheet(mod.id) }, "Datasheet map"));
     row.append(el("button", { class: "btn", onclick: () => { delete state.modules[name]; renderAll(); } }, "Remove"));
     list.append(row);
   }
@@ -299,6 +344,71 @@ function renameModule(old, next) {
   const out = {}; for (const [k, v] of Object.entries(state.modules)) out[k === old ? next : k] = v;
   state.modules = out; refresh();
 }
+
+/* ---------- datasheet map ---------- */
+const STATUS = { modelled: "Modelled", simplified: "Simplified", "not-modelled": "Not modelled",
+  unchecked: "Not checked by VirtuLab" };
+async function openDatasheet(id) {
+  let data;
+  try { data = await api("/api/datasheet?module=" + encodeURIComponent(id)); } catch (e) { return toast(e.message); }
+  $("ds-title").textContent = data.title;
+  const sub = $("ds-sub"); sub.replaceChildren();
+  if (data.product_page) sub.append(el("a", { href: data.product_page, target: "_blank", rel: "noopener noreferrer" }, "Manufacturer page"), " · ");
+  sub.append("Interface: " + (data.interface || ""));
+  if (data.documents.length) {
+    sub.append(el("div", { style: "margin-top:4px" }, "Read: ", ...data.documents.flatMap((d, i) => [
+      i ? "; " : "", el("b", {}, d.id), " ",
+      d.url ? el("a", { href: d.url, target: "_blank", rel: "noopener noreferrer" }, d.title) : d.title,
+      ` (${d.revision || "revision unknown"}, retrieved ${d.retrieved || "?"})`])));
+  } else {
+    sub.append(el("div", { style: "margin-top:4px;color:var(--bad)" }, "No document has been read for this sensor yet: every row is unverified."));
+  }
+  const counts = {}; for (const r of data.rows) counts[r.status] = (counts[r.status] || 0) + 1;
+  $("ds-summary").replaceChildren(...Object.entries(STATUS).filter(([k]) => counts[k]).map(([k, v]) =>
+    el("span", { class: "st " + k }, `${counts[k]} ${v.toLowerCase()}`)));
+  const unverified = data.rows.filter(r => r.unverified).length, issues = data.rows.filter(r => r.issue).length;
+  if (unverified) $("ds-summary").append(el("span", { class: "st not-modelled" }, `${unverified} unverified (no citation)`));
+  if (issues) $("ds-summary").append(el("span", { class: "st unchecked" }, `${issues} datasheet issue${issues === 1 ? "" : "s"}`));
+  const rows = data.rows.map(r => {
+    const places = el("div", { class: "places" });
+    const snippet = el("div", { class: "snippet" });
+    for (const [kind, label] of [["model", "model"], ["driver", "driver"], ["test", "test"]]) {
+      const p = r[kind]; if (!p) continue;
+      const b = el("button", { class: "place" + (p.line ? "" : " missing"), "aria-expanded": "false",
+        title: p.path, disabled: !p.line,
+        onclick: async () => {
+          const open = b.getAttribute("aria-expanded") === "true";
+          places.querySelectorAll(".place").forEach(x => x.setAttribute("aria-expanded", "false"));
+          snippet.replaceChildren();
+          if (open) return;
+          try {
+            const w = await api(`/api/source?module=${encodeURIComponent(id)}&path=${encodeURIComponent(p.path)}&line=${p.line}`);
+            const code = el("pre", {});
+            w.text.split("\n").forEach((line, i) => {
+              const n = w.start + i;
+              code.append(el("span", { class: n === w.highlight ? "hl" : "" }, String(n).padStart(4) + "  " + line + "\n"));
+            });
+            snippet.append(el("div", { class: "meta" }, `${w.path}:${w.highlight}`), code);
+            b.setAttribute("aria-expanded", "true");
+          } catch (e) { toast(e.message); }
+        } }, p.line ? `${label} · ${p.path.split("/").pop()}:${p.line}` : `${label} · not found`);
+      places.append(b);
+    }
+    return el("tr", {},
+      el("td", { class: "says" }, el("b", {}, r.topic), r.datasheet, r.note ? el("small", {}, r.note) : "",
+        r.issue ? el("small", { style: "color:var(--warn)" }, "⚠ Datasheet issue: " + r.issue) : ""),
+      el("td", {}, r.unverified ? el("span", { class: "st not-modelled" }, "unverified")
+        : el("small", {}, r.source + (r.corroborated_by ? "; also " + r.corroborated_by.join(", ") : ""))),
+      el("td", {}, el("span", { class: "st " + r.status }, STATUS[r.status])),
+      el("td", {}, places.children.length ? places : el("small", { class: "hint" }, "—"), snippet));
+  });
+  $("ds-table").replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "The datasheet says"), el("th", {}, "Source"), el("th", {}, "Status"), el("th", {}, "Where in the code"))),
+    el("tbody", {}, rows)));
+  const dlg = $("datasheet"); if (!dlg.open) dlg.showModal();
+}
+$("ds-close").addEventListener("click", () => $("datasheet").close());
+$("datasheet").addEventListener("click", (e) => { if (e.target === $("datasheet")) $("datasheet").close(); });
 
 /* ---------- step 3: tests ---------- */
 function renderTests() {
@@ -439,6 +549,8 @@ document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click
       state.board = "stm32f4_discovery";
     }
     renderAll();
+    const wanted = new URLSearchParams(location.hash.slice(1)).get("datasheet");  // #token=..&datasheet=adxl345
+    if (wanted) openDatasheet(wanted);
   } catch (e) {
     document.body.prepend(el("p", { style: "padding:16px;color:var(--bad)" },
       "Cannot reach VirtuLab: " + e.message + ". Open the URL printed by `virtulab ui`, including the #token part."));

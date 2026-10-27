@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import VirtulabError, yamlite
+from . import MONITOR_MARK, VirtulabError, yamlite
 from .boards import BOARDS
 from .catalog import DEFAULT_TESTS, MODULES, PROTOCOLS, TESTS, get_module, get_test
 from .yamlite import Hex
@@ -20,7 +20,7 @@ SCHEMA_VERSION = 1
 
 _TOP_KEYS = ("version", "board", "build", "timeout", "modules", "tests", "ci")
 _BUILD_KEYS = ("sources", "include", "cflags", "ldflags", "linker_script", "runtime")
-_MODULE_KEYS = ("model", "bus", "address")
+_MODULE_KEYS = ("model", "bus", "address", "cs")
 _CI_KEYS = ("provider", "branches")
 _PROVIDERS = ("github", "gitlab")
 _NAME = re.compile(r"[a-z][a-z0-9_]*")
@@ -32,6 +32,7 @@ class ModuleSpec:
     model: str
     bus: str
     address: int | None = None
+    cs: str | None = None  # SPI chip-select pin, e.g. "PA4"; None = the module's default
 
 
 @dataclass
@@ -69,6 +70,8 @@ class ProjectConfig:
                 entry: dict = {"model": m.model, "bus": m.bus}
                 if m.address is not None:
                     entry["address"] = Hex(m.address)
+                if m.cs is not None:
+                    entry["cs"] = m.cs
                 data["modules"][name] = entry
         data["tests"] = {t: dict(opts) for t, opts in self.tests.items()}
         data["ci"] = {"provider": self.ci_provider, "branches": list(self.ci_branches)}
@@ -149,7 +152,10 @@ def from_dict(data: dict) -> ProjectConfig:
         address = spec.get("address")
         if address is not None and not isinstance(address, int):
             raise VirtulabError(f"virtulab.yml: module '{name}' address must be a number, e.g. 0x48")
-        cfg.modules[str(name)] = ModuleSpec(str(name), str(spec["model"]), str(spec["bus"]), address)
+        cs = spec.get("cs")
+        if cs is not None and not isinstance(cs, str):
+            raise VirtulabError(f"virtulab.yml: module '{name}' cs must be a pin name, e.g. PA4")
+        cfg.modules[str(name)] = ModuleSpec(str(name), str(spec["model"]), str(spec["bus"]), address, cs)
 
     tests = data.get("tests")
     if tests is None:
@@ -210,16 +216,83 @@ def option(cfg: ProjectConfig, test: str, name: str):
     raise KeyError(name)
 
 
+CORE_CLOCK_HZ = 16_000_000  # the STM32F4 reset clock (HSI)
+
+_PIN = re.compile(r"P([A-I])(\d|1[0-5])")
+
+
+def parse_pin(text: str) -> tuple[str, int]:
+    """'PA4' -> ('A', 4). Raises VirtulabError for anything that is not a GPIO pin name."""
+    m = _PIN.fullmatch(text.strip().upper())
+    if not m:
+        raise VirtulabError(f"'{text}' is not a pin name. Use a port letter A-I and a pin 0-15, e.g. PA4")
+    return m[1], int(m[2])
+
+
+def sim_path(cfg: ProjectConfig, name: str) -> str:
+    """The emulator monitor path of a module, as used in `vl_sim("<path> Property value")`."""
+    m = cfg.modules[name]
+    module = get_module(m.model)
+    if module.protocol == "uart":
+        return f"sysbus.{m.name}"
+    if module.protocol == "spi":
+        return f"sysbus.{m.bus}.{m.bus}_mux.{m.name}"
+    return f"sysbus.{m.bus}.{m.name}"
+
+
 def renode_repl(cfg: ProjectConfig) -> str | None:
-    """The generated Renode lines for the declared modules. Users never write these."""
-    lines = []
+    """The generated Renode lines for the declared modules. Users never write these.
+
+    SPI devices sit behind a multiplexer on their bus, which turns the chip-select GPIO
+    lines into transaction boundaries (the emulator's SPI block does not see them) and
+    routes each transaction to the one device whose line is low.
+    UART devices are not registered on a bus: they sit on the other end of a UART hub, so
+    their connection is a monitor command, added after MONITOR_MARK.
+    """
+    lines, monitor = [], []
+    chip_selects: dict[str, list[str]] = {}  # GPIO port -> "pin -> mux@index"
+    spi_index: dict[str, int] = {}  # bus -> devices attached so far
     for m in cfg.modules.values():
         module = get_module(m.model)
-        address = m.address if m.address is not None else module.default_address
-        target = f"{m.bus} {address:#04x}" if address is not None else m.bus
-        lines.append(f"{m.name}: {module.renode_type} @ {target}")
-    return "\n".join(lines) + "\n" if lines else None
+        if module.protocol == "uart":
+            hub = f"vl_{m.name}_link"
+            lines.append(f"{m.name}: {module.renode_type} @ sysbus")
+            monitor += [f'emulation CreateUARTHub "{hub}"',
+                        f"connector Connect sysbus.{m.bus} {hub}",
+                        f"connector Connect sysbus.{m.name} {hub}"]
+        elif module.protocol == "spi":
+            mux = f"{m.bus}_mux"
+            index = spi_index.get(m.bus, 0)
+            if index == 0:
+                lines.append(f"{mux}: SPI.SPIMultiplexer @ {m.bus}")
+            spi_index[m.bus] = index + 1
+            lines.append(f"{m.name}: {module.renode_type} @ {mux} {index}")
+            port, pin = parse_pin(m.cs or module.default_cs or "PA4")
+            chip_selects.setdefault(port, []).append(f"    {pin} -> {mux}@{index}")
+            # Chip-select lines idle high on a real board (pull-ups). Without this the emulator
+            # sees every unused line as low, i.e. every device as selected.
+            monitor += [f"sysbus.{m.bus}.{mux} SetActiveLow {index}",
+                        f"sysbus.{m.bus}.{mux} OnGPIO {index} true"]
+        else:
+            address = m.address if m.address is not None else module.default_address
+            target = f"{m.bus} {address:#04x}" if address is not None else m.bus
+            lines.append(f"{m.name}: {module.renode_type} @ {target}")
+    if not lines:
+        return None
+    # Time: the core runs from the 16 MHz reset clock, so SysTick counts at that rate and a
+    # firmware delay of 1 ms is 1 ms on the emulator's virtual clock, the clock device models
+    # use for their own latencies. The emulated CPU's speed is left at Renode's default (about
+    # 100 MIPS, six times a real 16 MHz core): the emulated I2C block needs a fast CPU to
+    # sequence its transfers (see docs/FIDELITY.md, "Time").
+    monitor.insert(0, f"sysbus.nvic Frequency {CORE_CLOCK_HZ}")
+    for port, wires in chip_selects.items():
+        lines.append(f"gpioPort{port}:")
+        lines += wires
+    text = "\n".join(lines) + "\n"
+    if monitor:
+        text += MONITOR_MARK + "\n" + "\n".join(monitor) + "\n"
+    return text
 
 
 __all__ = ["ProjectConfig", "ModuleSpec", "from_dict", "load", "find", "option",
-           "renode_repl", "MODULES", "PROTOCOLS"]
+           "renode_repl", "sim_path", "parse_pin", "MODULES", "PROTOCOLS"]

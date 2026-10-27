@@ -57,17 +57,10 @@ void i2c1_init(void)
     I2C_CR1(I2C1) = I2C_CR1_PE;
 }
 
-i2c_status_t i2c1_read_reg(uint8_t addr7, uint8_t reg, uint8_t *buf, size_t len)
+/* START, read address, then `len` bytes with the ACK/STOP sequence the STM32F4 needs. */
+static i2c_status_t receive(uint8_t addr7, uint8_t *buf, size_t len)
 {
-    i2c_status_t status = start_and_address(addr7, 0);
-    if (status != I2C_OK) {
-        return status;
-    }
-    clear_addr_flag();
-    I2C_DR(I2C1) = reg;
-    if ((status = wait_flag(I2C_SR1_TXE)) != I2C_OK) {
-        return status;
-    }
+    i2c_status_t status;
 
     I2C_CR1(I2C1) |= I2C_CR1_ACK;
     if ((status = start_and_address(addr7, 1)) != I2C_OK) {
@@ -91,6 +84,25 @@ i2c_status_t i2c1_read_reg(uint8_t addr7, uint8_t reg, uint8_t *buf, size_t len)
     return I2C_OK;
 }
 
+i2c_status_t i2c1_read_reg(uint8_t addr7, uint8_t reg, uint8_t *buf, size_t len)
+{
+    i2c_status_t status = start_and_address(addr7, 0);
+    if (status != I2C_OK) {
+        return status;
+    }
+    clear_addr_flag();
+    I2C_DR(I2C1) = reg;
+    if ((status = wait_flag(I2C_SR1_TXE)) != I2C_OK) {
+        return status;
+    }
+    return receive(addr7, buf, len);
+}
+
+i2c_status_t i2c1_read(uint8_t addr7, uint8_t *buf, size_t len)
+{
+    return receive(addr7, buf, len);
+}
+
 i2c_status_t i2c1_write_reg(uint8_t addr7, uint8_t reg, uint8_t value)
 {
     i2c_status_t status = start_and_address(addr7, 0);
@@ -104,6 +116,47 @@ i2c_status_t i2c1_write_reg(uint8_t addr7, uint8_t reg, uint8_t value)
     }
     I2C_DR(I2C1) = value;
     if ((status = wait_flag(I2C_SR1_BTF)) != I2C_OK) {
+        return status;
+    }
+    I2C_CR1(I2C1) |= I2C_CR1_STOP;
+    return I2C_OK;
+}
+
+i2c_status_t i2c1_write_reg16(uint8_t addr7, uint8_t reg, uint16_t value)
+{
+    i2c_status_t status = start_and_address(addr7, 0);
+    if (status != I2C_OK) {
+        return status;
+    }
+    clear_addr_flag();
+    const uint8_t bytes[3] = {reg, (uint8_t)(value >> 8), (uint8_t)value};
+    for (size_t i = 0; i < sizeof(bytes); i++) {
+        I2C_DR(I2C1) = bytes[i];
+        if ((status = wait_flag(I2C_SR1_TXE)) != I2C_OK) {
+            return status;
+        }
+    }
+    if ((status = wait_flag(I2C_SR1_BTF)) != I2C_OK) {
+        return status;
+    }
+    I2C_CR1(I2C1) |= I2C_CR1_STOP;
+    return I2C_OK;
+}
+
+i2c_status_t i2c1_write(uint8_t addr7, const uint8_t *buf, size_t len)
+{
+    i2c_status_t status = start_and_address(addr7, 0);
+    if (status != I2C_OK) {
+        return status;
+    }
+    clear_addr_flag();
+    for (size_t i = 0; i < len; i++) {
+        I2C_DR(I2C1) = buf[i];
+        if ((status = wait_flag(I2C_SR1_TXE)) != I2C_OK) {
+            return status;
+        }
+    }
+    if (len > 0u && (status = wait_flag(I2C_SR1_BTF)) != I2C_OK) {
         return status;
     }
     I2C_CR1(I2C1) |= I2C_CR1_STOP;

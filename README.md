@@ -32,6 +32,9 @@ board: stm32f4_discovery
 modules:
   temp: { model: tmp108, bus: i2c1, address: 0x48 }
   baro: { model: bmp180, bus: i2c1 }
+  accel: { model: adxl345, bus: spi1, cs: PA4 }
+  storage: { model: w25q128, bus: spi1, cs: PB1 }
+  gps: { model: nmea_gps, bus: usart1 }
 tests:
   unit: {}
   footprint: { flash_increase: 4K, ram_increase: 2K }
@@ -51,11 +54,15 @@ docker run --rm -v "$PWD:/workspace" ghcr.io/yann-zurstrassen/virtulab-ci:1 run
 | You pick | Options today |
 | :--- | :--- |
 | Board | 9 (`virtulab catalog`). Only `stm32f4_discovery` (Renode) can carry sensors; the 8 QEMU boards run the CPU only |
-| Protocol | I²C, SPI, UART (SPI and UART buses exist on the board; no SPI or UART sensor model ships yet) |
-| Sensor | TMP108 (datasheet model), BMP180 (Renode's model, lightly tested). Both I²C |
+| Protocol | I²C, SPI, UART. SPI devices share a bus, each with its own chip-select pin (`cs:`); a UART carries one device in the emulator |
+| Sensor | 11 today, each with a datasheet map (`virtulab datasheet NAME`, or the link on each card in the setup page). **I²C:** TMP108 temperature, BMP180 pressure (Renode's model), INA219 current and power, MPU-6050 motion, SHT31 temperature and humidity. **SPI:** ADXL345 accelerometer, MAX31855 thermocouple, W25Q128 flash. **UART:** NMEA GPS, AT-command cellular modem, Modbus RTU transmitter. Each can be made to fail on purpose (no answer, bad checksum, open circuit, busy flash) |
 | Tests | unit, footprint, coverage, fuzz, fault injection. Fault injection needs a QEMU board |
 
-The sample firmware `init` can create (`--template starter`) is built to pass on its first run. Its sensor drivers are written for `i2c1`. A full recorded run is in [`docs/demo-run.txt`](docs/demo-run.txt). The setup page is local only (127.0.0.1, random token).
+The sample firmware `init` can create (`--template starter`) is built to pass on its first run. Its sensor drivers are written for `i2c1`, `spi1` and the UARTs `usart1`, `usart3` and `uart4`; the chip-select pin is yours to choose. A full recorded run is in [`docs/demo-run.txt`](docs/demo-run.txt). The setup page is local only (127.0.0.1, random token).
+
+> **A real vendor driver, unchanged.** [`examples/sensirion-sht3x`](examples/sensirion-sht3x) runs Sensirion's own SHT3x driver on the virtual board against our SHT31 model (`./run.sh`). Doing that found and fixed three mistakes in the model.
+
+> **Where each sensor behaviour comes from.** [`docs/DATASHEETS.md`](docs/DATASHEETS.md) lists, for every sensor, what its datasheet says, whether VirtuLab models it, and the file in the model, the sample driver and the sample test. The setup page shows the same with the code next to it. A test fails when a reference stops matching the code.
 
 > **Honest limits.** The GitHub and GitLab files are generated and structurally validated, and the same steps run in the Docker image locally, but the workflows have not been executed on GitHub. Fuzzing is host-side, fault injection is single instruction skip, coverage is line and branch. See [docs/FIDELITY.md](docs/FIDELITY.md).
 

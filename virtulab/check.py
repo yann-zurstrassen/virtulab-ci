@@ -13,7 +13,7 @@ from pathlib import Path
 from . import emulator
 from .boards import BOARDS
 from .catalog import board_buses, get_module, get_test, PROTOCOLS
-from .config import ProjectConfig, option
+from .config import ProjectConfig, option, parse_pin
 
 OK, WARN, ERROR = "ok", "warn", "error"
 _ICON = {OK: "✅", WARN: "⚠️ ", ERROR: "❌"}
@@ -108,13 +108,17 @@ def check(cfg: ProjectConfig, root: Path | None = None, tools: bool | str = True
         res.add(OK, cfg.board, f"{board.cpu}, {board.description} (QEMU, CPU only)")
 
     # Wiring
-    used: dict[tuple[str, int | None], str] = {}
+    used: dict[tuple[str, object], str] = {}
     for m in cfg.modules.values():
         label = f"{m.name}"
         try:
             module = get_module(m.model)
         except Exception as exc:
             res.add(ERROR, label, str(exc))
+            continue
+        if m.name in board.reserved_names:
+            res.add(ERROR, label, f"'{m.name}' is already a peripheral of {cfg.board} (the emulator would stop "
+                                  f"with \"already declared\"). Rename the module, e.g. '{m.name}_chip'.")
             continue
         if not buses:
             res.add(ERROR, label, f"{cfg.board} runs on QEMU and cannot host modules. "
@@ -139,6 +143,29 @@ def check(cfg: ProjectConfig, root: Path | None = None, tools: bool | str = True
                 res.add(ERROR, label, f"address {address:#04x} on {m.bus} is already used by '{clash}'")
                 continue
             used[(m.bus, address)] = m.name
+        elif module.protocol == "uart":
+            # The emulator connects one device to a UART (a hub joins two ends).
+            clash = used.get((m.bus, None))
+            if clash:
+                res.add(ERROR, label, f"{m.bus} already has '{clash}'. In the emulator a UART "
+                                      "carries one device; use another UART.")
+                continue
+            used[(m.bus, None)] = m.name
+        if module.default_cs:
+            try:
+                port, pin = parse_pin(m.cs or module.default_cs)
+            except Exception as exc:
+                res.add(ERROR, label, str(exc))
+                continue
+            if (port, pin) in {("A", 5), ("A", 6), ("A", 7)}:
+                res.add(ERROR, label, f"P{port}{pin} carries the SPI1 clock or data lines. Pick another "
+                                      "chip-select pin, e.g. PA4")
+                continue
+            clash = used.get(("cs", f"{port}{pin}"))
+            if clash:
+                res.add(ERROR, label, f"chip-select pin P{port}{pin} is already used by '{clash}'")
+                continue
+            used[("cs", f"{port}{pin}")] = m.name
         where = f"{m.bus} @ {address:#04x}" if address is not None else m.bus
         if module.tier == "accurate":
             res.add(OK, label, f"{module.title} on {where}: datasheet model")

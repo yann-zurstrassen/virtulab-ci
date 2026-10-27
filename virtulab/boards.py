@@ -32,6 +32,7 @@ class Board:
     platform: str | None = None  # Renode platform description (.repl)
     console: str | None = None  # Renode UART used as the firmware console
     runtime_defines: tuple[str, ...] = ()  # how the runtime reaches the console
+    reserved_names: frozenset[str] = frozenset()  # peripherals the platform already declares
 
 
 BOARDS = {
@@ -59,7 +60,16 @@ BOARDS = {
               emulator="renode",
               platform="platforms/boards/stm32f4_discovery-kit.repl",
               console="sysbus.usart2",
-              runtime_defines=("-DVL_CONSOLE_STM32_USART=0x40004400",)),
+              runtime_defines=("-DVL_CONSOLE_STM32_USART=0x40004400",),
+              # Every top-level name of Renode's stm32f4_discovery-kit.repl and the files it includes. A
+              # module declared under one of them stops Renode with "Variable ... was already declared".
+              reserved_names=frozenset(
+                  "UserButton UserLED bitbandPeripherals bitbandSram can1 can2 cpu crc dma1 dma2 ethernet "
+                  "externalButton externalLed exti flash flash_controller fsmcBank1 iwdg nvic phy phy1 pwr "
+                  "rcc rng rom1 rom2 rtc sram sysbus i2c1 i2c2 i2c3 spi1 spi2 spi3 usart1 usart2 usart3 uart4 "
+                  "uart5 gpioPortA gpioPortB gpioPortC gpioPortD gpioPortE gpioPortF gpioPortG gpioPortH "
+                  "gpioPortI gpioPortJ gpioPortK nvicInput23 nvicInput40".split()
+                  + [f"timer{n}" for n in range(1, 15)])),
     ]
 }
 

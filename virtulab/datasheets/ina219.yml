@@ -1,0 +1,77 @@
+part: "INA219"
+manufacturer: "Texas Instruments"
+title: "TI INA219 current and power monitor"
+document: "INA219 datasheet (search 'INA219' on ti.com), register map and calibration section"
+product_page: "https://www.ti.com/product/INA219"
+interface: "I²C, 7-bit address 0x40 to 0x4F (pins A0 and A1)"
+rows:
+  - topic: "I²C address"
+    datasheet: "The A0 and A1 pins select one of 16 addresses, 0x40 to 0x4F."
+    status: modelled
+    model: "catalog.py#addresses=tuple(range(0x40, 0x50))"
+    driver: "templates/starter/ina219/include/ina219.h#define INA219_ADDR"
+  - topic: "Register pointer and byte order"
+    datasheet: "A write of one byte selects the register; registers are 16 bits, sent most significant byte first."
+    status: modelled
+    model: "devices/INA219.cs#pointer = data[0] & 0x7;"
+    driver: "templates/starter/ina219/src/ina219.c#most significant byte first"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_measures_bus_voltage_current_and_power"
+  - topic: "Configuration register reset value"
+    datasheet: "Register 0x00 resets to 0x399F."
+    status: modelled
+    model: "devices/INA219.cs#private const ushort ConfigurationReset = 0x399F;"
+    driver: "templates/starter/ina219/include/ina219.h#define INA219_CONFIGURATION_RESET"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_powers_up_with_the_documented_configuration"
+  - topic: "Reset bit"
+    datasheet: "Setting bit 15 of the configuration register resets the chip to its power-up state."
+    status: modelled
+    model: "devices/INA219.cs#private const ushort ResetBit = 0x8000;"
+    driver: "templates/starter/ina219/src/ina219.c#define RESET_BIT"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_reads_zero_current_until_it_is_calibrated"
+  - topic: "Shunt voltage"
+    datasheet: "Register 0x01: signed, 10 µV per count."
+    status: modelled
+    model: "devices/INA219.cs#/ 0.00001m"
+    driver: "templates/starter/ina219/src/ina219.c#signed, 10 uV per step"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_measures_bus_voltage_current_and_power"
+  - topic: "Shunt range and saturation"
+    datasheet: "The PGA bits (configuration bits 12 and 11) select ±40, ±80, ±160 or ±320 mV (reset: ±320 mV). A larger voltage reads as full scale."
+    status: modelled
+    model: "devices/INA219.cs#4000 << ((configuration >> 11) & 0x3)"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_saturates_at_the_end_of_its_shunt_range"
+  - topic: "Bus voltage"
+    datasheet: "Register 0x02: bits 15 to 3 hold the voltage in 4 mV steps; bit 1 (CNVR) says a conversion is ready."
+    status: modelled
+    model: "devices/INA219.cs#(BusCounts() << 3) | ConversionReady"
+    driver: "templates/starter/ina219/src/ina219.c#bits 15..3, 4 mV per step"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_measures_bus_voltage_current_and_power"
+  - topic: "Current register"
+    datasheet: "Register 0x04 = shunt voltage register × calibration register / 4096. It reads 0 until the calibration register is written."
+    status: modelled
+    model: "devices/INA219.cs#ShuntCounts() * calibration / 4096"
+    driver: "templates/starter/ina219/src/ina219.c#0.1 mA per step with the sample calibration"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_reads_zero_current_until_it_is_calibrated"
+  - topic: "Power register"
+    datasheet: "Register 0x03 = current register × bus voltage register / 5000 (20 times the current step)."
+    status: modelled
+    model: "devices/INA219.cs#/ 5000"
+    driver: "templates/starter/ina219/src/ina219.c#2 mW per step with the sample calibration"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_measures_bus_voltage_current_and_power"
+  - topic: "Calibration register"
+    datasheet: "Register 0x05 holds 0.04096 / (current step × shunt resistance); reset 0."
+    status: modelled
+    model: "devices/INA219.cs#private const int CalibrationRegister = 5;"
+    driver: "templates/starter/ina219/include/ina219.h#define INA219_CALIBRATION"
+    note: "The sample uses a 0.1 Ω shunt and a 0.1 mA step, so the value is 4096. Bit 0 of the register is not treated specially."
+  - topic: "Reverse current"
+    datasheet: "Current flowing the other way gives negative shunt voltage and current."
+    status: modelled
+    model: "devices/INA219.cs#Math.Max(-limit, Math.Min(limit, counts))"
+    test: "templates/starter/ina219/test/test_ina219.c#test_ina219_reports_reverse_current_as_negative"
+  - topic: "Operating modes, averaging and conversion time"
+    datasheet: "The configuration register sets the ADC resolution, averaging and mode (triggered, continuous, power-down)."
+    status: not-modelled
+    note: "Every read returns the present value at once."
+  - topic: "Bus voltage range bit and overflow flag"
+    datasheet: "Bit 13 of the configuration register selects a 16 V or 32 V range; the OVF flag marks an overflow of the current or power calculation."
+    status: not-modelled

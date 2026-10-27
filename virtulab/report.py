@@ -38,6 +38,7 @@ class Outcome:
     baseline_note: str | None = None
     budget_violations: list[str] = field(default_factory=list)
     timeout: float = 0.0
+    timeout_location: str | None = None  # "function (file:line)" where a timed-out run was stuck
 
     @property
     def status(self) -> str:
@@ -201,6 +202,8 @@ def render_markdown(outcome: Outcome, report_id: str = "default", checks_md: str
             "",
             "Return from `main()` or call `vl_exit(code)` to end the run.",
             "",
+            *([f"The CPU was still running in `{_cell(outcome.timeout_location)}`.", ""]
+              if outcome.timeout_location else []),
         ]
 
     if outcome.baseline:
@@ -218,6 +221,16 @@ def render_markdown(outcome: Outcome, report_id: str = "default", checks_md: str
                 for c in changes
             ]
             lines += ["", "</details>", ""]
+
+    if outcome.run and outcome.run.model_warnings and outcome.status in (FAILED, TIMEOUT, CRASHED):
+        lines += [
+            "#### 🔌 What the sensor models reported",
+            "",
+            "These come from the emulated sensors themselves and often explain a failing test.",
+            "",
+            *[f"- `{_cell(w)}`" for w in outcome.run.model_warnings],
+            "",
+        ]
 
     if outcome.run and outcome.run.sim_commands:
         lines += [

@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import DEVICES_DIR, VirtulabError
+from . import DEVICES_DIR, MONITOR_MARK, VirtulabError
 from .boards import Board
 from .build import symbol_addresses
 
@@ -52,6 +52,8 @@ class RunResult:
     output: str
     duration: float
     sim_commands: list[str] | None = None  # vl_sim() calls, "ok  cmd" / "FAIL cmd"
+    model_warnings: list[str] | None = None  # what the sensor models complained about, "air: message"
+    timeout_pc: int | None = None  # where the CPU was when the run timed out (Renode only)
 
 
 def run(board: Board, elf: Path, timeout: float, work_dir: Path,
@@ -66,9 +68,9 @@ def run(board: Board, elf: Path, timeout: float, work_dir: Path,
     return _run_qemu(board, elf, timeout)
 
 
-def _start(cmd: list[str], **kwargs) -> subprocess.Popen:
+def _start(cmd: list[str], stdin=subprocess.DEVNULL, **kwargs) -> subprocess.Popen:
     try:
-        return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, **kwargs)
+        return subprocess.Popen(cmd, stdin=stdin, **kwargs)
     except FileNotFoundError:
         raise VirtulabError(f"'{cmd[0]}' not found. Is the emulator installed?") from None
 
@@ -116,9 +118,11 @@ def _renode_script(board: Board, elf: Path, work_dir: Path, peripherals: str | N
         f"machine LoadPlatformDescription @{board.platform}",
     ]
     if peripherals:
+        description, _, monitor = peripherals.partition(MONITOR_MARK)
         repl = work_dir / "peripherals.repl"
-        repl.write_text(peripherals.rstrip() + "\n")
+        repl.write_text(description.rstrip() + "\n")
         lines.append(f"machine LoadPlatformDescription @{repl}")
+        lines += [cmd for cmd in monitor.splitlines() if cmd.strip()]
     lines += [
         f"sysbus LoadELF @{elf}",
         f"{board.console} CreateFileBackend @{uart_log} true",
@@ -134,6 +138,76 @@ def _renode_script(board: Board, elf: Path, work_dir: Path, peripherals: str | N
     return script
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _renode_error(log: Path) -> str | None:
+    """The text of a failed Renode command ("There was an error executing command ..."), if any."""
+    if not log.exists():
+        return None
+    text = _ANSI.sub("", log.read_text(errors="replace"))
+    start = text.find("There was an error executing command")
+    if start < 0:
+        return None
+    block = text[start:].split("\n\n")[0].split("[INFO]")[0]
+    return block.strip()
+
+
+_WARNING = re.compile(r"\[WARNING\] ([\w.]+): (.*?)(?: \(\d+\))?\s*$")
+_MODEL_NAME = re.compile(r"^(\w+): (?:VirtuLab|Sensors)\.", re.MULTILINE)
+_MAX_WARNINGS = 10
+_NO_TARGET = re.compile(r"\[WARNING\] (\w+): Child address changed to (0x[0-9a-fA-F]+), but target is not registered")
+_DECLARED = re.compile(r"^(\w+): (?:VirtuLab|Sensors)\.\w+ @ (\w+) (0x[0-9a-fA-F]+)", re.MULTILINE)
+
+
+def model_warnings(log: Path, peripherals: str | None) -> list[str]:
+    """Warnings the declared sensor models logged ("air: Read before the measurement is done ..."), once each.
+
+    A model says why it answered the way it did (an early read, an unknown command, a write to a
+    read-only register). Those lines sit in Renode's log among platform noise; only lines from a
+    module the project declared are kept.
+    """
+    if not peripherals or not log.exists():
+        return []
+    description = peripherals.partition(MONITOR_MARK)[0]
+    names = set(_MODEL_NAME.findall(description))
+    declared = _DECLARED.findall(description)
+    found: list[str] = []
+    for line in _ANSI.sub("", log.read_text(errors="replace")).splitlines():
+        miss = _NO_TARGET.search(line)
+        if miss:
+            bus, address = miss[1], miss[2]
+            here = ", ".join(f"{n} at {a}" for n, b, a in declared if b == bus)
+            entry = (f"{bus}: nothing answers at {address}"
+                     + (f" (the project declares {here})" if here else " (no module is declared on this bus)"))
+            if entry not in found:
+                found.append(entry)
+            continue
+        match = _WARNING.search(line)
+        if match and match[1].rsplit(".", 1)[-1] in names:
+            entry = f"{match[1].rsplit('.', 1)[-1]}: {match[2]}"
+            if entry not in found:
+                found.append(entry)
+    return found[:_MAX_WARNINGS]
+
+
+def _read_pc(proc: subprocess.Popen, log: Path) -> int | None:
+    """Ask Renode where the CPU is (its console is open on stdin) and read the answer from the log."""
+    try:
+        size = log.stat().st_size
+        proc.stdin.write(b"sysbus.cpu PC\n")
+        proc.stdin.flush()
+    except (OSError, ValueError):
+        return None
+    for _ in range(40):
+        time.sleep(0.05)
+        text = _ANSI.sub("", log.read_bytes()[size:].decode(errors="replace")).replace("\r", "\n")  # Renode ends lines with \r
+        match = re.search(r"^0x([0-9a-fA-F]+)\s*$", text, re.MULTILINE)
+        if match:
+            return int(match[1], 16)
+    return None
+
+
 def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
                 peripherals: str | None) -> RunResult:
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -144,20 +218,28 @@ def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
 
     start = time.monotonic()
     with open(renode_log, "wb") as log:
-        proc = _start([RENODE, "--disable-xwt", "--plain", "--port", "-1", str(script)],
-                      cwd=work_dir, stdout=log, stderr=subprocess.STDOUT)
-        exit_match, timed_out = None, False
+        # --console, with stdin kept open, prints the error of a command that fails (a bad platform
+        # description, say). --plain hides it and the run just waits for the timeout.
+        proc = _start([RENODE, "--disable-xwt", "--console", "--port", "-1", str(script)],
+                      stdin=subprocess.PIPE, cwd=work_dir, stdout=log, stderr=subprocess.STDOUT)
+        exit_match, timed_out, timeout_pc = None, False, None
         try:
             while True:
                 text = uart_log.read_text(errors="replace") if uart_log.exists() else ""
                 exit_match = _EXIT_SENTINEL.search(text)
                 if exit_match or proc.poll() is not None:
                     break
+                failure = _renode_error(renode_log)
+                if failure:
+                    raise VirtulabError(f"Renode could not set up the virtual board:\n{failure}")
                 if time.monotonic() - start > timeout:
                     timed_out = True
+                    timeout_pc = _read_pc(proc, renode_log)
                     break
                 time.sleep(0.05)
         finally:
+            if proc.stdin:
+                proc.stdin.close()
             proc.terminate()
             try:
                 proc.wait(timeout=10)
@@ -179,4 +261,5 @@ def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
             tail = renode_log.read_text(errors="replace").strip().splitlines()[-20:]
             output += "\n[renode exited unexpectedly]\n" + "\n".join(tail)
     return RunResult(exit_code=exit_code, timed_out=timed_out, output=output,
-                     duration=duration, sim_commands=sim_commands)
+                     duration=duration, sim_commands=sim_commands,
+                     model_warnings=model_warnings(renode_log, peripherals), timeout_pc=timeout_pc)

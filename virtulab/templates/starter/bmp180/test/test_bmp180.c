@@ -7,7 +7,7 @@
 #include "virtulab.h"
 #include "virtulab_test.h"
 
-#define SENSOR "sysbus.@BUS@.@MODULE@"
+#define SENSOR "@SIM@"
 
 static void test_bmp180_reports_its_chip_id(void)
 {

@@ -56,18 +56,31 @@ void tearDown(void);
 #define TEST_ASSERT_FALSE(cond) TEST_ASSERT_MESSAGE(!(cond), "Expected FALSE Was TRUE")
 #define TEST_ASSERT_NULL(ptr) TEST_ASSERT_MESSAGE((ptr) == 0, "Expected NULL")
 #define TEST_ASSERT_NOT_NULL(ptr) TEST_ASSERT_MESSAGE((ptr) != 0, "Expected Non-NULL")
+#define TEST_ASSERT_NULL_MESSAGE(ptr, msg) TEST_ASSERT_MESSAGE((ptr) == 0, (msg))
+#define TEST_ASSERT_NOT_NULL_MESSAGE(ptr, msg) TEST_ASSERT_MESSAGE((ptr) != 0, (msg))
 
 #define TEST_ASSERT_EQUAL_INT_MESSAGE(e, a, msg) \
     vl_test_assert_int((int64_t)(e), (int64_t)(a), __LINE__, (msg))
 #define TEST_ASSERT_EQUAL_INT(e, a) TEST_ASSERT_EQUAL_INT_MESSAGE(e, a, 0)
+#define TEST_ASSERT_NOT_EQUAL_MESSAGE(e, a, msg) TEST_ASSERT_MESSAGE((int64_t)(e) != (int64_t)(a), (msg))
+#define TEST_ASSERT_NOT_EQUAL(e, a) TEST_ASSERT_NOT_EQUAL_MESSAGE(e, a, "Expected Not Equal")
 #define TEST_ASSERT_EQUAL(e, a) TEST_ASSERT_EQUAL_INT(e, a)
 #define TEST_ASSERT_EQUAL_UINT(e, a) TEST_ASSERT_EQUAL_INT(e, a)
+#define TEST_ASSERT_EQUAL_UINT8(e, a) TEST_ASSERT_EQUAL_INT((uint8_t)(e), (uint8_t)(a))
+/* Passes when `actual` is within `delta` of `expected` (inclusive). */
+#define TEST_ASSERT_INT_WITHIN(delta, e, a) \
+    do { \
+        int64_t vl_diff_ = (int64_t)(a) - (int64_t)(e); \
+        if (vl_diff_ < 0) vl_diff_ = -vl_diff_; \
+        if (vl_diff_ > (int64_t)(delta)) vl_test_assert_int((int64_t)(e), (int64_t)(a), __LINE__, "Values Not Within Delta"); \
+    } while (0)
 
 #define TEST_ASSERT_EQUAL_HEX32_MESSAGE(e, a, msg) \
     vl_test_assert_hex((uint32_t)(e), (uint32_t)(a), __LINE__, (msg))
 #define TEST_ASSERT_EQUAL_HEX32(e, a) TEST_ASSERT_EQUAL_HEX32_MESSAGE(e, a, 0)
 #define TEST_ASSERT_EQUAL_HEX16(e, a) TEST_ASSERT_EQUAL_HEX32((uint16_t)(e), (uint16_t)(a))
 #define TEST_ASSERT_EQUAL_HEX8(e, a) TEST_ASSERT_EQUAL_HEX32((uint8_t)(e), (uint8_t)(a))
+#define TEST_ASSERT_EQUAL_HEX8_MESSAGE(e, a, msg) TEST_ASSERT_EQUAL_HEX32_MESSAGE((uint8_t)(e), (uint8_t)(a), (msg))
 #define TEST_ASSERT_EQUAL_HEX(e, a) TEST_ASSERT_EQUAL_HEX32(e, a)
 
 #define TEST_ASSERT_EQUAL_STRING_MESSAGE(e, a, msg) \

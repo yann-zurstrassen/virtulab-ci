@@ -9,6 +9,11 @@ RUNTIME_DIR = Path(__file__).resolve().parent / "runtime"
 DEVICES_DIR = Path(__file__).resolve().parent / "devices"  # Renode peripheral models
 
 
+# Separates the Renode platform description from monitor commands in a peripherals
+# string (a UART device needs a hub connecting it to the board's UART).
+MONITOR_MARK = "//== VirtuLab monitor commands =="
+
+
 class VirtulabError(Exception):
     """A configuration problem the user has to fix (bad board, no sources, ...)."""
 

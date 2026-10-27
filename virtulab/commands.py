@@ -46,6 +46,47 @@ def catalog(ns) -> int:
 
 
 # ---------------------------------------------------------------------------
+# datasheet
+
+def datasheet(ns) -> int:
+    from . import datasheets
+    if ns.issues:
+        print(datasheets.issues_markdown())
+        return 0
+    if ns.markdown:
+        print(datasheets.to_markdown(ns.module) if ns.module else datasheets.all_markdown())
+        return 0
+    if not ns.module:
+        print("Sensors with a datasheet map (virtulab datasheet NAME):")
+        for name in datasheets.available():
+            print(f"  {name:<10} {datasheets.load(name)['title']}")
+        return 0
+    data = datasheets.load(ns.module)
+    print(f"{data['title']}")
+    for d in data["documents"]:
+        print(f"  read: {d['title']} ({d.get('revision', 'revision unknown')}), {d.get('url', '')}")
+    if not data["documents"]:
+        print("  read: nothing yet, every row is unverified")
+    if data.get("product_page"):
+        print(f"  page: {data['product_page']}")
+    print(f"  interface: {data.get('interface', '')}\n")
+    for r in data["rows"]:
+        print(f"[{datasheets.STATUS[r['status']]}] {r['topic']}\n    {r['datasheet']}")
+        print(f"    source {r.get('source') or 'UNVERIFIED (no citation)'}"
+              + (f"; also {', '.join(r['corroborated_by'])}" if r.get("corroborated_by") else ""))
+        if r.get("issue"):
+            print(f"    ISSUE  {r['issue']}")
+        for place, label in (("model", "model "), ("driver", "driver"), ("test", "test  ")):
+            p = r.get(place)
+            if p:
+                where = f"{p['path']}:{p['line']}" if p["line"] else f"{p['path']} (anchor not found)"
+                print(f"    {label} {where}")
+        if r.get("note"):
+            print(f"    note   {r['note']}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # check
 
 def check(ns) -> int:

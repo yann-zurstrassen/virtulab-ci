@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from virtulab import VirtulabError, catalog, cigen, config, yamlite
+from virtulab import MONITOR_MARK, VirtulabError, catalog, cigen, config, yamlite
 from virtulab.check import check
 from virtulab.config import ModuleSpec, ProjectConfig
 
@@ -60,9 +60,45 @@ class ConfigTest(unittest.TestCase):
         cfg = config.from_dict({"board": "stm32f4_discovery", "modules": {
             "temp": {"model": "tmp108", "bus": "i2c1", "address": 0x49},
             "baro": {"model": "bmp180", "bus": "i2c2"}}})
-        self.assertEqual(config.renode_repl(cfg).splitlines(),
+        repl, _, monitor = config.renode_repl(cfg).partition(MONITOR_MARK)
+        self.assertEqual(repl.splitlines(),
                          ["temp: VirtuLab.TMP108 @ i2c1 0x49", "baro: Sensors.BMP180 @ i2c2 0x77"])
+        self.assertEqual(monitor.split(), ["sysbus.nvic", "Frequency", "16000000"])  # the clock all models share
         self.assertIsNone(config.renode_repl(ProjectConfig()))
+
+    def test_spi_and_uart_modules_become_renode_lines(self):
+        cfg = config.from_dict({"board": "stm32f4_discovery", "modules": {
+            "accel": {"model": "adxl345", "bus": "spi2", "cs": "pb12"},
+            "other": {"model": "adxl345", "bus": "spi2", "cs": "PC3"},
+            "gps": {"model": "nmea_gps", "bus": "usart3"}}})
+        repl, _, monitor = config.renode_repl(cfg).partition(MONITOR_MARK)
+        self.assertEqual(repl.splitlines(), [
+            "spi2_mux: SPI.SPIMultiplexer @ spi2", "accel: VirtuLab.ADXL345 @ spi2_mux 0",
+            "other: VirtuLab.ADXL345 @ spi2_mux 1", "gps: VirtuLab.NMEAGps @ sysbus",
+            "gpioPortB:", "    12 -> spi2_mux@0", "gpioPortC:", "    3 -> spi2_mux@1"])
+        self.assertEqual([c for c in monitor.splitlines() if c], [
+            "sysbus.nvic Frequency 16000000",
+            "sysbus.spi2.spi2_mux SetActiveLow 0", "sysbus.spi2.spi2_mux OnGPIO 0 true",
+            "sysbus.spi2.spi2_mux SetActiveLow 1", "sysbus.spi2.spi2_mux OnGPIO 1 true",
+            'emulation CreateUARTHub "vl_gps_link"', "connector Connect sysbus.usart3 vl_gps_link",
+            "connector Connect sysbus.gps vl_gps_link"])
+        self.assertEqual(config.sim_path(cfg, "accel"), "sysbus.spi2.spi2_mux.accel")
+        self.assertEqual(config.sim_path(cfg, "gps"), "sysbus.gps")
+
+    def test_chip_select_is_kept_in_the_file(self):
+        cfg = config.from_dict({"modules": {"a": {"model": "adxl345", "bus": "spi1", "cs": "PA4"}}})
+        self.assertIn("a: { model: adxl345, bus: spi1, cs: PA4 }", cfg.dumps())
+        self.assertEqual(config.from_dict(yamlite.loads(cfg.dumps())).modules["a"].cs, "PA4")
+
+
+class DumpIsStandardYamlTest(unittest.TestCase):
+    def test_values_that_standard_yaml_would_read_as_aliases_are_quoted(self):
+        text = yamlite.dumps(config.ProjectConfig().to_dict())
+        self.assertIn('sources: ["**/*.c"]', text)
+        self.assertEqual(yamlite.loads(text)["build"]["sources"], ["**/*.c"])
+        for value in ("*.c", "@x", "**/a"):
+            self.assertEqual(yamlite.loads("v: " + yamlite.dumps({"k": value}).split(": ", 1)[1])["v"], value)
+            self.assertTrue(yamlite.dumps({"k": value}).split(": ", 1)[1].startswith('"'), value)
 
 
 class CheckTest(unittest.TestCase):
@@ -73,6 +109,23 @@ class CheckTest(unittest.TestCase):
         res = self.check(board="stm32f4_discovery", modules={
             "t": {"model": "tmp108", "bus": "i2c1", "address": 0x48},
             "b": {"model": "bmp180", "bus": "i2c1"}})
+        self.assertTrue(res.ok, res.to_text())
+
+    def test_a_module_cannot_take_a_name_the_board_already_uses(self):
+        for name in ("flash", "sram", "crc", "rcc", "i2c1", "timer3"):
+            res = self.check(board="stm32f4_discovery", modules={name: {"model": "w25q128", "bus": "spi1"}})
+            self.assertFalse(res.ok, name)
+            self.assertIn("already a peripheral", res.to_text())
+        res = self.check(board="stm32f4_discovery", modules={"storage": {"model": "w25q128", "bus": "spi1"}})
+        self.assertTrue(res.ok, res.to_text())
+
+    def test_the_readme_example_is_a_valid_configuration(self):
+        import re
+        from pathlib import Path
+        from virtulab import yamlite
+        readme = (Path(__file__).resolve().parent.parent / "README.md").read_text()
+        block = re.search(r"```yaml\n(version: 1\n.*?)```", readme, re.S).group(1)
+        res = check(config.from_dict(yamlite.loads(block)), tools=False)
         self.assertTrue(res.ok, res.to_text())
 
     def test_sensor_on_qemu_board_is_an_error(self):
@@ -97,6 +150,33 @@ class CheckTest(unittest.TestCase):
         res = self.check(board="stm32f4_discovery", modules={
             "a": {"model": "tmp108", "bus": "i2c1"}, "b": {"model": "tmp108", "bus": "i2c2"}})
         self.assertTrue(res.ok, res.to_text())
+
+    def test_spi_and_uart_modules_pass_on_the_right_buses(self):
+        res = self.check(board="stm32f4_discovery", modules={
+            "accel": {"model": "adxl345", "bus": "spi1"}, "gps": {"model": "nmea_gps", "bus": "usart1"}})
+        self.assertTrue(res.ok, res.to_text())
+        res = self.check(board="stm32f4_discovery", modules={"a": {"model": "adxl345", "bus": "i2c1"}})
+        self.assertIn("speaks SPI", res.to_text())
+        res = self.check(board="stm32f4_discovery", modules={"g": {"model": "nmea_gps", "bus": "spi1"}})
+        self.assertIn("speaks UART", res.to_text())
+
+    def test_uart_carries_one_device_but_spi_can_share_with_distinct_chip_selects(self):
+        res = self.check(board="stm32f4_discovery", modules={
+            "a": {"model": "nmea_gps", "bus": "usart1"}, "b": {"model": "nmea_gps", "bus": "usart1"}})
+        self.assertIn("usart1 already has 'a'", res.to_text())
+        res = self.check(board="stm32f4_discovery", modules={
+            "a": {"model": "adxl345", "bus": "spi1"}, "b": {"model": "adxl345", "bus": "spi1", "cs": "PB0"}})
+        self.assertTrue(res.ok, res.to_text())
+        res = self.check(board="stm32f4_discovery", modules={
+            "a": {"model": "adxl345", "bus": "spi1"}, "b": {"model": "adxl345", "bus": "spi2"}})
+        self.assertIn("chip-select pin PA4 is already used by 'a'", res.to_text())
+        res = self.check(board="stm32f4_discovery", modules={"a": {"model": "adxl345", "bus": "spi1", "cs": "PA5"}})
+        self.assertIn("carries the SPI1 clock", res.to_text())
+
+    def test_chip_select_must_be_a_pin_name(self):
+        res = self.check(board="stm32f4_discovery", modules={
+            "a": {"model": "adxl345", "bus": "spi1", "cs": "A4"}})
+        self.assertIn("not a pin name", res.to_text())
 
     def test_fault_injection_needs_a_qemu_board(self):
         res = self.check(board="stm32f4_discovery", tests={"unit": {}, "fault": {}})

@@ -1,0 +1,88 @@
+part: "NMEA 0183 GPS receiver"
+manufacturer: "Generic (u-blox, MediaTek and others)"
+title: "Generic NMEA 0183 GPS receiver"
+document: "NMEA 0183 sentence format; field layouts are documented in each GPS module's protocol manual (e.g. the GGA sentence)"
+product_page: ""
+interface: "UART, 9600 baud, 8 data bits, no parity, 1 stop bit"
+rows:
+  - topic: "Sentence framing"
+    datasheet: "A sentence starts with '$', ends with '*', two hex digits and CR LF. At most 82 characters."
+    status: modelled
+    model: "devices/NMEAGps.cs#*{1:X2}"
+    driver: "templates/starter/nmea/include/nmea.h#NMEA_MAX_SENTENCE"
+    test: "templates/starter/nmea/test/test_nmea.c#test_nmea_rejects_malformed_input"
+  - topic: "Checksum"
+    datasheet: "The two hex digits are the XOR of every character between '$' and '*'."
+    status: modelled
+    model: "devices/NMEAGps.cs#sum ^= c;"
+    driver: "templates/starter/nmea/src/nmea.c#sum ^= (uint8_t)*p;"
+    test: "templates/starter/nmea/test/test_nmea.c#test_nmea_rejects_a_wrong_checksum"
+  - topic: "GGA field order"
+    datasheet: "GGA: time, latitude, N/S, longitude, E/W, fix quality, satellites in use, HDOP, altitude, M, geoid separation, M, ..."
+    status: modelled
+    model: "devices/NMEAGps.cs#GPGGA,123519.00,{0},{1},1"
+    driver: "templates/starter/nmea/src/nmea.c#fields[6]"
+    test: "templates/starter/nmea/test/test_nmea.c#test_nmea_parses_a_position"
+  - topic: "Coordinates"
+    datasheet: "Latitude is ddmm.mmmm and longitude dddmm.mmmm (degrees, then minutes with a decimal point), with N/S and E/W as the sign."
+    status: modelled
+    model: "devices/NMEAGps.cs#private static string Coordinate("
+    driver: "templates/starter/nmea/src/nmea.c#static int parse_coordinate("
+    test: "templates/starter/nmea/test/test_nmea.c#test_nmea_south_and_west_are_negative"
+  - topic: "Fix quality"
+    datasheet: "0 means no fix; 1 and above mean a position is valid."
+    status: modelled
+    model: "devices/NMEAGps.cs#GPGGA,123519.00,,,,,0,00,99.9"
+    driver: "templates/starter/nmea/src/nmea.c#return NMEA_NO_FIX;"
+    test: "templates/starter/nmea_gps/test/test_gps.c#test_gps_without_a_fix_is_not_reported_as_a_position"
+  - topic: "Satellites in use"
+    datasheet: "Two digits, the number of satellites used in the solution."
+    status: modelled
+    model: "devices/NMEAGps.cs#public int Satellites"
+    driver: "templates/starter/nmea/src/nmea.c#fix->satellites"
+    test: "templates/starter/nmea_gps/test/test_gps.c#test_gps_reads_a_position"
+  - topic: "Altitude and HDOP"
+    datasheet: "Altitude above mean sea level in metres and horizontal dilution of precision."
+    status: simplified
+    model: "devices/NMEAGps.cs#public decimal Altitude"
+    note: "Altitude is sent; HDOP is a constant 0.9. The sample driver reads neither."
+  - topic: "UART settings"
+    datasheet: "9600 baud, 8N1 is the factory default of most modules."
+    status: simplified
+    model: "devices/NMEAGps.cs#public uint BaudRate => 9600;"
+    driver: "templates/starter/nmea_gps/src/gps.c#define GPS_BAUD"
+    note: "The emulator does not pace bytes by baud rate, so a wrong baud rate in the driver is not caught."
+  - topic: "Time and date"
+    datasheet: "UTC time hhmmss.ss in the first field."
+    status: simplified
+    model: "devices/NMEAGps.cs#123519.00"
+    note: "A fixed time."
+  - topic: "No fix reported"
+    datasheet: "Before a fix is found, a receiver sends sentences with empty position fields."
+    status: modelled
+    model: "devices/NMEAGps.cs#public bool HasFix"
+    test: "templates/starter/nmea_gps/test/test_gps.c#test_gps_without_a_fix_is_not_reported_as_a_position"
+    note: "VirtuLab fault injection: HasFix false."
+  - topic: "Corrupted sentence"
+    datasheet: "(Not in the datasheet.) A noisy line produces sentences whose checksum does not match."
+    status: modelled
+    model: "devices/NMEAGps.cs#public bool CorruptChecksum"
+    driver: "templates/starter/nmea_gps/src/gps.c#return GPS_ERR_CHECKSUM;"
+    test: "templates/starter/nmea_gps/test/test_gps.c#test_gps_rejects_a_corrupted_sentence"
+  - topic: "Receiver silent"
+    datasheet: "(Not in the datasheet.) An unpowered or miswired receiver sends nothing."
+    status: modelled
+    model: "devices/NMEAGps.cs#public bool Silent"
+    driver: "templates/starter/nmea_gps/src/gps.c#return GPS_ERR_TIMEOUT;"
+    test: "templates/starter/nmea_gps/test/test_gps.c#test_gps_times_out_when_the_receiver_is_silent"
+  - topic: "Other sentences"
+    datasheet: "RMC (speed, course, date), GSA and GSV (satellite details), VTG and others."
+    status: not-modelled
+  - topic: "Continuous output"
+    datasheet: "Receivers send their sentences every second (or at the configured rate) without being asked."
+    status: not-modelled
+    note: "A sentence is sent only when the test asks (EmitFix), all at once."
+  - topic: "Configuration commands"
+    datasheet: "The host can change rate, baud rate and enabled sentences with vendor commands."
+    status: not-modelled
+    model: "devices/NMEAGps.cs#Bytes sent by the host (configuration commands) are ignored."

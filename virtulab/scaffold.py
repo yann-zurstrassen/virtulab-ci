@@ -4,18 +4,28 @@ from pathlib import Path
 
 from . import VirtulabError, catalog
 from .catalog import board_buses
-from .config import ProjectConfig
+from .config import ProjectConfig, parse_pin, sim_path
 
 TEMPLATES = Path(__file__).resolve().parent / "templates" / "starter"
 
-# (feature directory, suite function, needs hardware)
+# Starter features that are not sensors: (suite function, needs hardware).
 _SUITES = {"core": ("test_crc_run", False), "parser": ("test_parser_run", False),
-           "auth": ("test_auth_run", False), "tmp108": ("test_thermostat_run", True),
-           "bmp180": ("test_bmp180_run", True)}
-_NO_SUITE = {"i2c"}  # shared driver code, no tests of its own
-_I2C_PARTS = ("tmp108", "bmp180")
+           "auth": ("test_auth_run", False), "nmea": ("test_nmea_run", False),
+           "modbus": ("test_modbus_run", False)}
+_NO_SUITE = {"stm32f4", "i2c", "spi", "uart", "clock"}  # shared driver code, no tests of its own
+_DRIVER_FILES = {"i2c": ["src/i2c.c"], "spi": ["src/spi.c"], "uart": ["src/uart.c"],
+                 "clock": ["src/clock.c"]}
+
+# The buses the sample drivers are written for, per protocol.
+_SAMPLE_BUSES = {"i2c": ("i2c1",), "spi": ("spi1",), "uart": ("usart1", "usart3", "uart4")}
 
 STARTER_CFLAGS = "-std=c99 -Wall -Wextra"
+
+
+def _sensors(cfg: ProjectConfig) -> list[catalog.Module]:
+    """The catalog entries of the declared sensors that have starter firmware, in catalog order."""
+    used = {m.model for m in cfg.modules.values()}
+    return [m for m in catalog.MODULES.values() if m.id in used and m.sample]
 
 
 def _features(cfg: ProjectConfig) -> list[str]:
@@ -24,15 +34,25 @@ def _features(cfg: ProjectConfig) -> list[str]:
         features.append("parser")
     if "fault" in cfg.tests:
         features.append("auth")
-    parts = [p for p in _I2C_PARTS if any(m.model == p for m in cfg.modules.values())]
-    if parts:
-        features.append("i2c")
-        features += parts
+    sensors = _sensors(cfg)
+    if sensors:
+        features.append("stm32f4")
+        features += [proto for proto in _SAMPLE_BUSES if any(s.protocol == proto for s in sensors)]
+        for sensor in sensors:
+            features += [f for f in sensor.sample.extras if f not in features]
+            features.append(sensor.id)
     return features
 
 
+def _suite(feature: str) -> tuple[str, bool] | None:
+    if feature in _SUITES:
+        return _SUITES[feature]
+    module = catalog.MODULES.get(feature)
+    return (module.sample.suite, True) if module and module.sample else None
+
+
 def _test_files(features: list[str]) -> tuple[str, str]:
-    suites = [_SUITES[f] for f in features if f not in _NO_SUITE]
+    suites = [s for s in map(_suite, features) if s]
     header = ["#ifndef TEST_SUITES_H", "#define TEST_SUITES_H", "",
               "/* Each suite returns its number of failures; test_main.c adds them up. */"]
     header += [f"int {name}(void);" for name, _ in suites] + ["", "#endif /* TEST_SUITES_H */", ""]
@@ -56,9 +76,8 @@ def apply_defaults(cfg: ProjectConfig) -> None:
     if "coverage" in cfg.tests:
         cfg.tests["coverage"].setdefault("sources", ["src/*.c"])
         # Code that talks to the emulated sensors cannot run natively; its tests and drivers stay out.
-        hardware_files = {"i2c": ["src/i2c.c"],
-                          "tmp108": ["src/thermostat.c", "src/tmp108.c", "test/test_thermostat.c"],
-                          "bmp180": ["src/bmp180.c", "test/test_bmp180.c"]}
+        hardware_files = {**{k: v for k, v in _DRIVER_FILES.items()},
+                          **{m.id: list(m.sample.hardware) for m in _sensors(cfg)}}
         hardware = [f for name in features for f in hardware_files.get(name, [])]
         if hardware:
             cfg.tests["coverage"]["exclude"] = hardware
@@ -74,9 +93,18 @@ def scaffold(cfg: ProjectConfig, root: Path, force: bool = False) -> list[str]:
     """Write the sample firmware and align `cfg` (sources, flags, test options) with it."""
     features = _features(cfg)
     for m in cfg.modules.values():
-        if m.model in _I2C_PARTS and m.bus != "i2c1":
-            raise VirtulabError(f"The sample {m.model.upper()} driver is written for i2c1. Attach the "
-                                "sensor to i2c1, or start without sample firmware and bring your own driver.")
+        module = catalog.MODULES[m.model]
+        allowed = _SAMPLE_BUSES.get(module.protocol, ())
+        if module.sample and m.bus not in allowed:
+            raise VirtulabError(f"The sample {module.title} driver is written for {' or '.join(allowed)}. "
+                                f"Attach the sensor to {allowed[0]}, or start without sample firmware and "
+                                "bring your own driver.")
+
+    models = [m.model for m in cfg.modules.values() if catalog.MODULES[m.model].sample]
+    for model in set(models):
+        if models.count(model) > 1:
+            raise VirtulabError(f"The sample firmware supports one {catalog.MODULES[model].title}. "
+                                "Declare one, or start without sample firmware.")
 
     files: dict[str, str] = {}
     for feature in features:
@@ -84,8 +112,12 @@ def scaffold(cfg: ProjectConfig, root: Path, force: bool = False) -> list[str]:
         subst = {}
         if module:
             default = catalog.MODULES[module.model].default_address
-            subst = {"@BUS@": module.bus, "@MODULE@": module.name,
-                     "@ADDR@": f"0x{(module.address if module.address is not None else default):02X}"}
+            address = module.address if module.address is not None else default
+            cs_port, cs_pin = parse_pin(module.cs or catalog.MODULES[module.model].default_cs or "PA4")
+            subst = {"@BUS@": module.bus, "@MODULE@": module.name, "@SIM@": sim_path(cfg, module.name),
+                     "@ADDR@": f"0x{address:02X}" if address is not None else "0",
+                     "@CS_BASE@": f"0x{0x40020000 + 0x400 * (ord(cs_port) - ord('A')):08X}u",
+                     "@CS_PIN@": str(cs_pin), "@UART@": f"uart_{module.bus}"}
         for path in sorted((TEMPLATES / feature).rglob("*")):
             if path.is_file():
                 text = path.read_text()

@@ -11,6 +11,8 @@ RUN apt-get update \
         libstdc++-arm-none-eabi-newlib \
         qemu-system-arm \
         gcc \
+        clang \
+        libclang-rt-dev \
         libc6-dev \
         gdb-multiarch \
         python3 \

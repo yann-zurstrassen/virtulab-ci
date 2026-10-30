@@ -223,12 +223,12 @@ class CatalogTest(unittest.TestCase):
         steps = workflow["jobs"]["virtulab"]["steps"]
         self.assertEqual([s.get("uses") for s in steps],
                          ["actions/checkout@v4", cigen.ACTION, "actions/upload-artifact@v4",
-                          "actions/upload-artifact@v4"])
+                          "actions/upload-artifact@v4", "actions/upload-artifact@v4"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertEqual(workflow["jobs"]["report"]["permissions"]["pull-requests"], "write")
         self.assertEqual(steps[2]["with"]["if-no-files-found"], "error")
-        self.assertIn("fuzz/crashes", steps[3]["with"]["path"])
-        self.assertEqual(steps[3]["with"]["if-no-files-found"], "ignore")
+        self.assertIn("fuzz/crashes", steps[4]["with"]["path"])
+        self.assertEqual(steps[4]["with"]["if-no-files-found"], "ignore")
         path, text = cigen.render(cfg, "gitlab")
         self.assertEqual(path, ".gitlab-ci.yml")
         self.assertIn("virtulab run --baseline", text)

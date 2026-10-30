@@ -52,6 +52,14 @@ jobs:
           path: .virtulab/report.md
           include-hidden-files: true   # upload-artifact skips dot folders by default
           if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: virtulab-evidence
+          path: .virtulab/evidence
+          include-hidden-files: true
+          if-no-files-found: error
 {crashes}
   # Holds the write token and never runs the pull request's code: it only posts the report.
   report:
@@ -61,10 +69,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+      security-events: write   # findings appear in code scanning, at the source line
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: virtulab-report
+      - uses: actions/download-artifact@v4
+        with:
+          name: virtulab-evidence
+          path: evidence
+      - uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true   # code scanning needs a public repository or GitHub Advanced Security
+        with:
+          sarif_file: evidence/results.sarif
       - name: Post the report
         continue-on-error: true   # pull requests from forks get a read-only token
         run: gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file report.md

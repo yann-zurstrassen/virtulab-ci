@@ -19,7 +19,7 @@ CONFIG_NAMES = ("virtulab.yml", "virtulab.yaml")
 SCHEMA_VERSION = 1
 
 _TOP_KEYS = ("version", "board", "build", "timeout", "modules", "tests", "ci")
-_BUILD_KEYS = ("sources", "include", "cflags", "ldflags", "linker_script", "runtime")
+_BUILD_KEYS = ("sources", "include", "cflags", "ldflags", "linker_script", "runtime", "command", "elf")
 _MODULE_KEYS = ("model", "bus", "address", "cs")
 _CI_KEYS = ("provider", "branches")
 _PROVIDERS = ("github", "gitlab")
@@ -44,6 +44,8 @@ class ProjectConfig:
     ldflags: str = ""
     linker_script: str | None = None
     runtime: bool = True
+    build_command: str | None = None  # the project's own build, e.g. cmake --build build
+    build_elf: str | None = None  # the ELF that command produces
     timeout: str = "30s"
     modules: dict[str, ModuleSpec] = field(default_factory=dict)
     tests: dict[str, dict] = field(default_factory=lambda: {t: {} for t in DEFAULT_TESTS})
@@ -52,6 +54,8 @@ class ProjectConfig:
 
     def to_dict(self) -> dict:
         build: dict = {"sources": list(self.sources)}
+        if self.build_command:
+            build = {"command": self.build_command, "elf": self.build_elf}
         if self.include:
             build["include"] = list(self.include)
         if self.cflags:
@@ -134,6 +138,12 @@ def from_dict(data: dict) -> ProjectConfig:
     cfg.ldflags = str(build.get("ldflags") or "")
     cfg.linker_script = build.get("linker_script") or None
     cfg.runtime = bool(build.get("runtime", True))
+    if "command" in build and not isinstance(build["command"], str):
+        raise VirtulabError("virtulab.yml: build.command must be text. Put it in quotes")
+    cfg.build_command = build.get("command") or None
+    cfg.build_elf = build.get("elf") or None
+    if bool(cfg.build_command) != bool(cfg.build_elf):
+        raise VirtulabError("virtulab.yml: build.command and build.elf go together")
     if "timeout" in data:
         cfg.timeout = str(data["timeout"])
 

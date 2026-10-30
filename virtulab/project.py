@@ -7,7 +7,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from . import VirtulabError, github
+from . import VirtulabError, evidence, github
 from .check import check
 from .cigen import IMAGE
 from .cli import EXIT_ERROR, EXIT_FAILED, Options, finish, parse_byte_limit, parse_timeout, run_unit
@@ -42,6 +42,8 @@ def to_options(cfg: ProjectConfig, root: Path, base: Options) -> Options:
         ldflags=cfg.ldflags.split(),
         linker_script=cfg.linker_script,
         runtime=cfg.runtime,
+        build_command=cfg.build_command,
+        build_elf=cfg.build_elf,
         peripherals=renode_repl(cfg),
         timeout=parse_timeout(cfg.timeout),
         baseline_ref=base.baseline_ref if footprint is not None else None,
@@ -102,6 +104,8 @@ def run_project(cfg: ProjectConfig, root: Path, base: Options) -> int:
         "checks_failed": len(failed),
         "checks": ",".join(f"{c.test}={c.status}" for c in suite.checks),
     }
+    written = evidence.write(cfg, suite, root, work)
+    print(f"🧾 Evidence written to {os.path.relpath(written)}")
     if suite.outcome is None:
         code = _finish_without_unit(opts, cfg, suite, work, extra)
     else:

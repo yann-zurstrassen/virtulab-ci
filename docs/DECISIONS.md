@@ -84,6 +84,15 @@ Recorded because they would have produced wrong results silently.
 
 The "Largest symbol size changes" table can list `__preinit_array_start` with a huge "before/after" size (for example 536,865,004). It comes from `nm --print-size` output in `virtulab/build.py::symbol_sizes`. It is visible in the PR 2 comment. It does not affect the Flash/RAM totals, which come from `arm-none-eabi-size`.
 
+## Product direction (2026-10-30)
+
+- **Evidence files** come from every project run. They record facts and limits, and make no compliance claim. No standard was mapped row by row, because the standards' text was not read.
+- **`build.command`** runs through a shell from `virtulab.yml`, which is the project's own file, like a Makefile. Coverage is skipped in that mode.
+- **libFuzzer** is used when a real clang can link it. Apple's clang cannot, so the probe compiles a small harness rather than trusting the flag. The Docker image grew to 2.15 GB for it.
+- **Third-party code** was run with the owner's approval, in a network-isolated container. Details stay in the git-ignored `.private/` folder until the maintainers have them.
+
+- **Known flaky run:** about 1 in 3 to 6 Docker suite runs takes around 680 s instead of 170 s, and a real fault sweep in `test_a_broken_debugger_fails` then fails. The cause is not established. It fails closed, so it costs a rerun, not a false pass. A customer would still see it as an unreliable check, so it needs fixing before a pilot.
+
 ## Review fixes (2026-10-30)
 
 - **Checks fail closed.** A fault sweep that applied no fault is `inconclusive` and fails. Zero tests fails. A budget that cannot be compared fails, except when there is no ref, or the baseline lacks these sources because the code is new.

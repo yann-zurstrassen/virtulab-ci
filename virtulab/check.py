@@ -181,7 +181,8 @@ def check(cfg: ProjectConfig, root: Path | None = None, tools: bool | str = True
         for opt in t.options:
             if opt.required and not cfg.tests[tid].get(opt.name) and not opt.default:
                 res.add(ERROR, tid, f"option '{opt.name}' is required")
-        if root is not None and tid in ("fuzz", "fault"):
+        prebuilt = tid == "fault" and cfg.tests[tid].get("elf")
+        if root is not None and tid in ("fuzz", "fault") and not prebuilt:
             key = "harness" if tid == "fuzz" else "probe"
             value = option(cfg, tid, key)
             absent = [p for p in ([value] if isinstance(value, str) else value) if not (root / p).is_file()]
@@ -199,7 +200,7 @@ def check(cfg: ProjectConfig, root: Path | None = None, tools: bool | str = True
             note = f"{t.title}" + (f" — {t.limits}" if t.limits and t.stage == "security" else "")
             res.add(OK, tid, note)
 
-    if root is not None and "unit" in cfg.tests:
+    if root is not None and "unit" in cfg.tests and not cfg.build_command:
         if not _matches(root, cfg.sources):
             res.add(ERROR, "build", f"no source files match {', '.join(cfg.sources)}")
     return res

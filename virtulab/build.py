@@ -36,6 +36,8 @@ class BuildConfig:
     ldflags: list[str] = field(default_factory=list)
     linker_script: str | None = None
     runtime: bool = True
+    command: str | None = None  # the project's own build; its ELF is `elf`
+    elf: str | None = None
 
 
 @dataclass
@@ -108,6 +110,8 @@ def _run(cmd: list[str], cwd: Path) -> tuple[int, str]:
 
 def build(root: Path, cfg: BuildConfig, build_dir: Path, exclude: Path | None = None) -> BuildResult:
     """Build into build_dir, which is wiped first and must be owned by VirtuLab."""
+    if cfg.command:
+        return _own_build(root, cfg)
     sources = resolve_sources(cfg.sources, root, exclude)
     if build_dir.exists():
         shutil.rmtree(build_dir)
@@ -175,6 +179,21 @@ def build(root: Path, cfg: BuildConfig, build_dir: Path, exclude: Path | None = 
         symbols=symbol_sizes(elf),
         sources=sources,
     )
+
+
+def _own_build(root: Path, cfg: BuildConfig) -> BuildResult:
+    """Run the project's own build command and take the ELF it leaves."""
+    proc = subprocess.run(cfg.command, shell=True, cwd=root, capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL)
+    log = proc.stdout + proc.stderr
+    if proc.returncode != 0:
+        return BuildResult(False, log, parse_diagnostics(log))
+    elf = (root / cfg.elf).resolve()
+    if not elf.is_file():
+        return BuildResult(False, log + f"\nThe build finished, but '{cfg.elf}' does not exist.\n",
+                           parse_diagnostics(log))
+    return BuildResult(ok=True, log=log, diagnostics=parse_diagnostics(log), elf=elf, sizes=measure(elf),
+                       symbols=symbol_sizes(elf))
 
 
 def measure(elf: Path) -> Sizes:

@@ -15,11 +15,11 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 --elf FILE --board NAME --source FILE [--address 0xADDR] [--timeout SECONDS] [--verbose]" >&2
+    echo "usage: $0 --elf FILE --board NAME --source FILE [--address 0xADDR] [--functions a,b] [--timeout SECONDS] [--verbose]" >&2
     exit 2
 }
 
-elf="" board="" source_file="" only_address="" timeout_s=10 verbose=no
+elf="" board="" source_file="" only_address="" only_functions="" timeout_s=10 verbose=no
 while [ $# -gt 0 ]; do
     if [ "$1" = "--verbose" ]; then verbose=yes; shift; continue; fi
     [ $# -ge 2 ] || usage
@@ -28,6 +28,7 @@ while [ $# -gt 0 ]; do
         --board) board="$2" ;;
         --source) source_file="$2" ;;
         --address) only_address="$2" ;;
+        --functions) only_functions=",$2," ;;
         --timeout) timeout_s="$2" ;;
         *) usage ;;
     esac
@@ -164,6 +165,7 @@ printf '%-12s %-26s %-28s %-9s %s\n' "tampered" "function+offset" "instruction" 
 swept=0 applied_count=0 bypass=0 denied=0 crashed=0 not_reached=0
 while read -r addr size name offset text; do
     if [ -n "$only_address" ] && [ "$((0x$addr))" -ne "$((only_address))" ]; then continue; fi
+    if [ -n "$only_functions" ] && [[ "$only_functions" != *",$name,"* ]]; then continue; fi
     resume=$(printf '0x%x' $((0x$addr + size)))
     read -r result applied <<< "$(run_faulted "0x$addr" "$resume")"
     swept=$((swept + 1))

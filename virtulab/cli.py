@@ -38,6 +38,8 @@ class Options:
     max_flash_increase: int | None = None
     max_ram_increase: int | None = None
     root: Path = Path(".")
+    build_command: str | None = None
+    build_elf: str | None = None
     work_dir: str = ".virtulab"
     comment: bool = False
     github_token: str = ""
@@ -182,12 +184,15 @@ def run_unit(opts: Options) -> tuple[Outcome, Path, Path]:
         ldflags=opts.ldflags,
         linker_script=opts.linker_script,
         runtime=opts.runtime,
+        command=opts.build_command,
+        elf=opts.build_elf,
     )
 
     peripherals = load_peripherals(opts.peripherals, root)
     emulator_name = "Renode" if board.emulator == "renode" else "QEMU"
     print(f"🚀 VirtuLab CI {__version__} — {board.name} ({board.cpu}, {board.description})")
 
+    work_dir.mkdir(parents=True, exist_ok=True)
     github.group("🔨 Build")
     result = build(root, cfg, work_dir / "build", exclude=work_dir)
     for src in result.sources:

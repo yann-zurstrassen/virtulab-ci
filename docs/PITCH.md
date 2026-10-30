@@ -130,13 +130,13 @@ A **board check** catches impossible setups before anything runs: a sensor wired
 
 ## What does not exist yet (be honest in front of customers)
 
-- **The checks only run on projects shaped like our samples.** Fault injection is wired to the sample `src/auth.c`, and VirtuLab compiles the sources itself. A team cannot yet point it at its own build and its own functions. *This is the biggest gap relative to the pitch.*
+- **Own builds are supported, but unproven on real firmware.** `build.command` and fault `functions` work on test projects only. No customer or open-source project has been run end to end. *This is the biggest gap relative to the pitch.* Market reasoning is in [`MARKET.md`](MARKET.md).
 - **The generated GitHub workflow has not run on GitHub yet**, and the one-line CI action needs a published Docker image before outsiders can use it.
 - **Fuzzing runs on the host**, on the parser logic, not on the virtual device.
 - **Fault injection tests one kind of attack** (skipping a single instruction, first execution only), and only on QEMU boards, so it does not combine with sensors.
 - **Coverage is line and branch only, no MC/DC**, which safety standards ask for.
 - **No sensor model has been compared with real hardware.** They are checked against documents, not silicon.
-- Not started: support for existing build systems, standard test-report formats (JUnit XML), importing chip definitions, debugging and flashing.
+- Not started: importing chip definitions, debugging and flashing.
 
 ---
 
@@ -145,7 +145,7 @@ A **board check** catches impossible setups before anything runs: a sensor wired
 The history says the buyer decides the business. The security angle is our answer, but so far it is only proven on our own demo. The next steps, in order:
 
 1. **Run the generated workflow on GitHub for real**, and open the five demo PRs as actual pull requests.
-2. **Accept an existing build.** Take the ELF the team's CMake or Make build produces, and let `virtulab.yml` name the functions to fuzz and fault-inject (for example `fault: { function: verify_pin }`).
+2. **Try the existing-build path on a real project,** and fix what breaks.
 3. **Find something in firmware we did not write.** Pick an open-source project with a bootloader or authentication check and run the checks on it unchanged. A real finding there is the pitch.
 4. **Show that result to 3 to 5 teams in regulated industries** before building more. What they ask for (MC/DC, multi-instruction glitches, reports a certifier accepts) sets the next quarter.
 

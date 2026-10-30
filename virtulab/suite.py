@@ -102,6 +102,9 @@ def parse_gcov(output: str, root: Path) -> dict:
 
 
 def run_coverage(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
+    if cfg.build_command:
+        return CheckOutcome("coverage", SKIP, "not available with build.command yet: coverage compiles the "
+                                              "sources itself")
     cc = _tool("cc", cfg.board)
     measured = set(_globs(root, option(cfg, "coverage", "sources")))
     skipped = set(_globs(root, option(cfg, "coverage", "exclude")))
@@ -165,6 +168,75 @@ def run_coverage(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
 _FUZZ_LINE = re.compile(r"FUZZ execs=(\d+) crashes=(\d+) regressions=(\d+) seed=(\d+) seconds=([\d.]+)")
 
 
+_UBSAN = re.compile(r"^(?P<file>[^\s:]+):(?P<line>\d+):\d+: runtime error: (?P<what>.+)$", re.MULTILINE)
+_ASAN = re.compile(r"^SUMMARY: AddressSanitizer: (?P<what>\S+) (?P<file>[^\s:]+):(?P<line>\d+)", re.MULTILINE)
+
+
+def _sanitizer_finding(text: str, root: Path) -> dict | None:
+    """Where the sanitizer stopped: the defect's own file and line, not the harness."""
+    m = _ASAN.search(text) or _UBSAN.search(text)
+    if not m:
+        return None
+    path = Path(m["file"])
+    if path.is_absolute() and path.resolve().is_relative_to(root):
+        path = path.resolve().relative_to(root)
+    return {"file": path.as_posix(), "line": int(m["line"]), "what": m["what"].strip()}
+
+
+_LIBFUZZER_STATS = re.compile(r"stat::number_of_executed_units:\s*(\d+)")
+_STANDARD_HARNESS = re.compile(r"^\s*int\s+LLVMFuzzerTestOneInput\s*\(", re.MULTILINE)  # a definition, not a mention
+FUZZ_DRIVER = RUNTIME_DIR / "host" / "fuzz_driver.c"
+
+
+def _libfuzzer_compiler(work: Path) -> str | None:
+    """A clang that can really link libFuzzer. Apple's clang has the flag but not the library."""
+    clang = shutil.which("clang")
+    if not clang:
+        return None
+    probe = work / "fuzzer_probe.c"
+    probe.write_text("#include <stdint.h>\n#include <stddef.h>\n"
+                     "int LLVMFuzzerTestOneInput(const uint8_t *d, size_t s) { (void)d; (void)s; return 0; }\n")
+    code, _ = _run([clang, "-fsanitize=fuzzer", str(probe), "-o", str(work / "fuzzer_probe")], work, 60)
+    return clang if code == 0 else None
+
+
+def _run_libfuzzer(cfg: ProjectConfig, root: Path, out: Path, cc: str, sources: list[str], include: list[str],
+                   harness: str, seconds: int, seed: int, crash_dir: str) -> CheckOutcome:
+    binary = out / "fuzz_target"
+    sanitizers = "-fsanitize=fuzzer,address,undefined"
+    cmd = [cc, "-O1", "-g", sanitizers, "-fno-sanitize-recover=undefined", *include, str(root / harness),
+           *[str(root / s) for s in sources], "-o", str(binary)]
+    code, text = _run(cmd, root, 180)
+    if code != 0:
+        return CheckOutcome("fuzz", FAIL, "the fuzz harness did not build", text)
+    known = sorted(p for p in (root / crash_dir).glob("*") if p.is_file() and not p.name.startswith("."))
+    if known:
+        code, text = _run([str(binary), *map(str, known)], root, 120)
+        if code != 0:
+            return CheckOutcome("fuzz", FAIL, "known crash input reproduces", text,
+                                {"regressions": len(known), "harness": harness})
+    corpus = root / option(cfg, "fuzz", "corpus")
+    seeds = [str(corpus)] if corpus.is_dir() else []
+    run_corpus = out / "corpus"
+    run_corpus.mkdir(exist_ok=True)
+    code, text = _run([str(binary), str(run_corpus), *seeds, f"-max_total_time={seconds}", f"-seed={seed}",
+                       "-print_final_stats=1", f"-artifact_prefix={crash_dir}/"], root, seconds + 60)
+    m = _LIBFUZZER_STATS.search(text)
+    execs = int(m[1]) if m else 0
+    data = {"execs": execs, "crashes": 0 if code == 0 else 1, "regressions": 0, "seed": seed,
+            "engine": "libFuzzer", "harness": harness}
+    detail = f"{execs:,} execs, coverage-guided (libFuzzer), seed {seed}"
+    if code != 0:
+        found = _sanitizer_finding(text, root)
+        if found:
+            data["finding"] = found
+        where = f": {found['what']} at {found['file']}:{found['line']}" if found else ""
+        return CheckOutcome("fuzz", FAIL, f"crash found{where}. Input saved in {crash_dir}. {detail}", text, data)
+    if not execs:
+        return CheckOutcome("fuzz", FAIL, "the fuzz run did not finish", text)
+    return CheckOutcome("fuzz", PASS, f"0 crashes. {detail}. Host-side fuzzing of the logic.", text, data)
+
+
 def run_fuzz(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
     cc = _tool("cc", cfg.board)
     harness = option(cfg, "fuzz", "harness")
@@ -175,24 +247,35 @@ def run_fuzz(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
     out = work / "fuzz"
     out.mkdir(parents=True, exist_ok=True)
     binary = out / "fuzz_target"
+    (root / crash_dir).mkdir(parents=True, exist_ok=True)
+    standard = bool(_STANDARD_HARNESS.search((root / harness).read_text(errors="replace")))
+    clang = _libfuzzer_compiler(out) if standard else None
+    if clang:
+        return _run_libfuzzer(cfg, root, out, clang, sources, include, harness, seconds, seed, crash_dir)
+    driver = [str(FUZZ_DRIVER)] if standard else []  # no libFuzzer here: blind mutation, and the report says so
     cmd = [cc, "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined",
-           *include, str(root / harness), *[str(root / s) for s in sources], "-o", str(binary)]
+           *include, str(root / harness), *[str(root / s) for s in sources], *driver, "-o", str(binary)]
     code, text = _run(cmd, root, 180)
     if code != 0:
         return CheckOutcome("fuzz", FAIL, "the fuzz harness did not build", text)
-    (root / crash_dir).mkdir(parents=True, exist_ok=True)
     code, text = _run([str(binary), "--seconds", str(seconds), "--seed", str(seed),
                        "--crash-dir", crash_dir], root, seconds + 60)
     m = _FUZZ_LINE.search(text)
     if not m:
-        return CheckOutcome("fuzz", FAIL, "the fuzz run did not finish", text)
+        return CheckOutcome("fuzz", FAIL, "the fuzz run crashed or did not finish", text, {"harness": harness})
     execs, crashes, regressions = int(m[1]), int(m[2]), int(m[3])
-    data = {"execs": execs, "crashes": crashes, "regressions": regressions, "seed": seed}
+    data = {"execs": execs, "crashes": crashes, "regressions": regressions, "seed": seed, "harness": harness}
     detail = f"{execs:,} execs in {float(m[5]):.1f}s, seed {seed}"
     if crashes or regressions or code != 0:
         what = "known crash input reproduces" if regressions else "crash found"
+        found = _sanitizer_finding(text, root)
+        if found:
+            data["finding"] = found
+            what += f": {found['what']} at {found['file']}:{found['line']}"
         return CheckOutcome("fuzz", FAIL, f"{what}: {crashes} crash(es), {regressions} regression(s). {detail}",
                             text, data)
+    if standard:
+        detail += ", blind mutation (no libFuzzer on this machine, so no coverage guidance)"
     return CheckOutcome("fuzz", PASS, f"0 crashes. {detail}. Host-side fuzzing of the logic.", text, data)
 
 
@@ -207,25 +290,55 @@ def _probes(cfg: ProjectConfig) -> list[str]:
     return [probe] if isinstance(probe, str) else list(probe)
 
 
-def _sweep(cfg: ProjectConfig, root: Path, work: Path, probe: str, name: str) -> CheckOutcome:
+_BYPASS_LINE = re.compile(r"^0x([0-9a-f]+)\s+(\S+)\s+(.+?)\s+denied\s+BYPASS", re.MULTILINE)
+
+
+def _findings(text: str, probe: str, elf: Path, root: Path) -> list[dict]:
+    """One entry per skipped instruction that broke the property, with its source line."""
+    from .build import addr2line
+    found = []
+    for address, where, instruction in _BYPASS_LINE.findall(text):
+        function, location = addr2line(elf, int(address, 16))
+        entry = {"probe": probe, "address": f"0x{address}", "function": function or where.split("+")[0],
+                 "instruction": instruction.strip()}
+        if location:
+            path, _, line = location.rpartition(":")
+            if Path(path).is_absolute() and Path(path).resolve().is_relative_to(root):
+                path = Path(path).resolve().relative_to(root).as_posix()
+            entry.update(file=path, line=int(line) if line.isdigit() else None)
+        found.append(entry)
+    return found
+
+
+def _sweep(cfg: ProjectConfig, root: Path, work: Path, probe: str, name: str, prebuilt: bool = False) -> CheckOutcome:
     from .build import BuildConfig, build  # local: build pulls in the Arm toolchain
 
     board = BOARDS[cfg.board]
-    bcfg = BuildConfig(board=board, sources=[probe, *option(cfg, "fault", "sources")],
-                       include_dirs=list(option(cfg, "fault", "include")),
-                       cflags=shlex.split(cfg.cflags), runtime=cfg.runtime)
-    result = build(root, bcfg, work / "fault" / name / "build", exclude=work)
-    if not result.ok or result.elf is None:
-        return CheckOutcome("fault", FAIL, f"the fault probe {probe} did not build", result.log)
-    cmd = [str(FAULT_SCRIPT), "--elf", str(result.elf), "--board", board.name,
+    if prebuilt:
+        elf = (root / probe).resolve()
+        if not elf.is_file():
+            return CheckOutcome("fault", FAIL, f"the probe image {probe} does not exist")
+    else:
+        bcfg = BuildConfig(board=board, sources=[probe, *option(cfg, "fault", "sources")],
+                           include_dirs=list(option(cfg, "fault", "include")),
+                           cflags=shlex.split(cfg.cflags), runtime=cfg.runtime)
+        result = build(root, bcfg, work / "fault" / name / "build", exclude=work)
+        if not result.ok or result.elf is None:
+            return CheckOutcome("fault", FAIL, f"the fault probe {probe} did not build", result.log)
+        elf = result.elf
+    cmd = [str(FAULT_SCRIPT), "--elf", str(elf), "--board", board.name,
            "--source", option(cfg, "fault", "target")]
+    functions = option(cfg, "fault", "functions")
+    if functions:
+        cmd += ["--functions", ",".join(functions)]
     code, text = _run(cmd, root, 1800)
     m = _FAULT_LINE.search(text)
     verdict = next((l for l in text.splitlines() if l.startswith("VERDICT")), "")
     if not m or m[1] == "inconclusive" or code not in (0, 1):
         return CheckOutcome("fault", FAIL, f"{probe}: {verdict or 'the sweep did not finish'}", text)
     swept, bypass, crashed = int(m[2]), int(m[3]), int(m[4])
-    data = {"swept": swept, "bypass": bypass, "crashed": crashed}
+    data = {"swept": swept, "bypass": bypass, "crashed": crashed,
+            "findings": _findings(text, probe, elf, root)}
     if bypass:
         return CheckOutcome("fault", FAIL, f"{probe}: bypass reachable: {bypass} of {swept} "
                                            "single-instruction skips grant access", text, data)
@@ -234,9 +347,12 @@ def _sweep(cfg: ProjectConfig, root: Path, work: Path, probe: str, name: str) ->
 
 def run_fault(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
     """Sweep once per probe. Each probe states one security property; all of them must hold."""
-    runs = [_sweep(cfg, root, work, p, Path(p).stem) for p in _probes(cfg)]
+    images = option(cfg, "fault", "elf")
+    runs = ([_sweep(cfg, root, work, e, Path(e).stem, prebuilt=True) for e in images] if images
+            else [_sweep(cfg, root, work, p, Path(p).stem) for p in _probes(cfg)])
     bad = [r for r in runs if r.failed]
-    data = {k: sum(r.data.get(k, 0) for r in runs) for k in ("swept", "bypass", "crashed")}
+    data: dict = {k: sum(r.data.get(k, 0) for r in runs) for k in ("swept", "bypass", "crashed")}
+    data["findings"] = [f for r in runs for f in r.data.get("findings", [])]
     log = "\n".join(r.log for r in (bad or runs))
     if bad:
         return CheckOutcome("fault", FAIL, "; ".join(r.summary for r in bad), log, data)

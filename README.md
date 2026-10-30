@@ -67,6 +67,30 @@ The sample firmware `init` can create (`--template starter`) is built to pass on
 > **Honest limits.** The GitHub and GitLab files are generated and structurally validated, and the same steps run in the Docker image locally, but the workflows have not been executed on GitHub. Fuzzing is host-side, fault injection is single instruction skip, coverage is line and branch. See [docs/FIDELITY.md](docs/FIDELITY.md).
 
 
+## 🧾 Evidence you can hand on
+
+Every `virtulab run` leaves `.virtulab/evidence/`: `junit.xml` for any CI's test view, `results.sarif` so findings land on the source line in code scanning, and `evidence.json` and `EVIDENCE.md`, which record the commit, image hash, tool versions, results and what each check does not show. It is an input to a security case, not a compliance claim.
+
+## 🔧 Use your own build
+
+Keep CMake, Make or west. VirtuLab runs the command, tests the ELF, and repeats the command on the base commit for the footprint delta:
+
+```yaml
+build:
+  command: cmake --build build/test
+  elf: build/test/firmware_tests.elf
+tests:
+  unit: {}
+  footprint: { flash_increase: 4K }
+  fuzz: { harness: fuzz/fuzz.c, sources: [src/parser.c] }   # standard LLVMFuzzerTestOneInput works
+  fault:
+    elf: [build/test/pin_probe.elf]     # probes your build produced
+    target: src/auth.c
+    functions: [verify_pin]
+```
+
+The ELF must exit through semihosting and print Unity-style results. Coverage is skipped in this mode for now, and fault injection still needs a QEMU board.
+
 ## 🎯 Who it's for
 
 Firmware teams in **medical, automotive and industrial** products, and any team of **20+ engineers** where the bench is shared and slow.
@@ -121,7 +145,7 @@ This is the comment recorded for PR 5 before the checks were merged into one pat
 
 | Feature | What it does | Status |
 | :--- | :--- | :--- |
-| 🧪 **Fuzzing** | Deterministic mutation loop over `parser_parse()` with ASan/UBSan, a guard canary and a parse→encode round-trip property. Known crash inputs in `fuzz/crashes/` are replayed first | ✅ ran. **Host-side fuzzing of the parser logic, not full-system fuzzing.** AFL++/libFuzzer: 🚧 PLANNED |
+| 🧪 **Fuzzing** | Any `LLVMFuzzerTestOneInput` harness, coverage-guided with libFuzzer, with ASan and UBSan. Without libFuzzer it falls back to blind mutation and says so. Known crash inputs are replayed first | ✅ ran. **Host-side fuzzing of the logic, not full-system fuzzing** |
 | 💥 **Fault injection** | QEMU + GDB: skip one instruction at a time inside `src/auth.c`, rerun the probe, report any wrong-PIN grant | ✅ ran. Single skip, first execution only. Not a model of physical glitches |
 | 📈 **Coverage** | `make coverage`: native gcov build of the unit tests, line and branch summary | ✅ ran. **Line and branch only, no MC/DC** |
 | 📊 **Footprint** | Flash/RAM from the real ELF, delta against the base ref, budgets that fail the build | ✅ ran |
@@ -273,5 +297,8 @@ Everything not marked ✅ above has no run behind it in this repo. Every assumpt
 
 Want to cut physical bench-testing bottlenecks, stop firmware bloat and speed up PR reviews for your embedded team?
 
-* 🌐 **Website:** [virtulab.io](https://virtulab.io) *(demo)*
-* ✉️ **Contact:** [sales@virtulab.io](mailto:sales@virtulab.io)
+* 💬 **Contact:** [open an issue](https://github.com/yann-zurstrassen/virtulab-ci/issues)
+
+## 📄 License
+
+VirtuLab is licensed under the [Apache License 2.0](LICENSE). Vendored third-party code keeps its own license, for example [`examples/sensirion-sht3x/vendor/sensirion/LICENSE`](examples/sensirion-sht3x/vendor/sensirion/LICENSE).

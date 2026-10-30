@@ -3,34 +3,47 @@
 part: "BMP180"
 manufacturer: "Bosch Sensortec"
 title: "Bosch BMP180 pressure and temperature sensor"
-document: "BMP180 datasheet (search 'BMP180' on bosch-sensortec.com), register map and calibration"
 product_page: "https://www.bosch-sensortec.com/products/environmental-sensors/pressure-sensors/bmp180/"
 interface: "I²C, fixed 7-bit address 0x77"
+documents:
+  - id: "bmp180-ds"
+    title: "Bosch BMP180 datasheet"
+    revision: "BST-BMP180-DS000-09"
+    kind: "datasheet"
+    url: "https://cdn-shop.adafruit.com/datasheets/BST-BMP180-DS000-09.pdf"
+    retrieved: "2026-10-30"
+    sha256: "d7d40e48ecdd33e8b6bb78f54e4025560e1531d473e7a551be7bfd3d2b68e04f"
 rows:
   - topic: "I²C address"
     datasheet: "The address is fixed at 0x77."
+    source: "bmp180-ds §5.2, p. 20"
     status: modelled
     model: "catalog.py#addresses=(0x77,)"
     driver: "templates/starter/bmp180/include/bmp180.h#BMP180_ADDR"
   - topic: "Chip ID"
     datasheet: "Register 0xD0 reads 0x55."
+    source: "bmp180-ds §4, p. 18"
     status: modelled
     driver: "templates/starter/bmp180/src/bmp180.c#BMP180_REG_CHIP_ID"
     test: "templates/starter/bmp180/test/test_bmp180.c#test_bmp180_reports_its_chip_id"
     note: "Renode's model."
   - topic: "Start a temperature conversion"
     datasheet: "Writing 0x2E to the control register 0xF4 starts a temperature measurement. The raw 16-bit result (UT) is read from registers 0xF6 (high byte) and 0xF7."
+    source: "bmp180-ds §5.4, Table 8, p. 21"
     status: modelled
     driver: "templates/starter/bmp180/src/bmp180.c#BMP180_CMD_TEMPERATURE"
     test: "templates/starter/bmp180/test/test_bmp180.c#test_bmp180_raw_temperature_follows_the_environment"
     note: "Renode's model. The test only checks that a warmer sensor gives a larger raw value."
   - topic: "Calibration coefficients"
     datasheet: "Eleven factory coefficients (AC1 to MD) in registers 0xAA to 0xBF, used by the datasheet's formulas to turn raw values into °C and Pa."
+    source: "bmp180-ds §3.4, Table 5, p. 13"
     status: unchecked
     note: "Renode's model provides them; the sample firmware does not read them, so the true temperature and pressure formulas are not exercised."
   - topic: "Pressure conversion"
     datasheet: "Control register value 0x34 plus the oversampling setting starts a pressure measurement (raw value UP)."
+    source: "bmp180-ds §5.4, Table 8, p. 21"
     status: unchecked
   - topic: "Conversion time and soft reset"
     datasheet: "A conversion takes up to 4.5 ms (more with oversampling); register 0xE0 with 0xB6 resets the chip."
+    source: "bmp180-ds §4, p. 18"
     status: unchecked

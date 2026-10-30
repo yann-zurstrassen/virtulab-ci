@@ -180,6 +180,9 @@ def from_dict(data: dict) -> ProjectConfig:
                 if not isinstance(opts, dict):
                     raise VirtulabError(f"virtulab.yml: options of test '{tid}' must be a mapping")
                 _unknown(f"tests.{tid}", opts, [o.name for o in get_test(tid).options])
+                for o in get_test(tid).options:
+                    if o.kind == "int" and o.name in opts and not isinstance(opts[o.name], int):
+                        raise VirtulabError(f"virtulab.yml: tests.{tid}.{o.name} must be a whole number")
                 cfg.tests[str(tid)] = dict(opts)
 
     ci = _expect("ci", data.get("ci"), dict) or {}

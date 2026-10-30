@@ -44,12 +44,41 @@ static auth_status_t auth_compare(const uint8_t *stored, const uint8_t *entered)
 }
 #endif
 
+#if AUTH_HARDENED
+/*
+ * Charged before the comparison and cleared only on success, so a skip anywhere in the
+ * failure path cannot leave a wrong PIN uncounted. Two routes reach the counter: the plain
+ * pointer, then a copy kept on the stack, and the second only ever raises the count. A skip
+ * in one route leaves the other.
+ */
+static inline __attribute__((always_inline)) void auth_charge_attempt(auth_t *ctx, auth_t *volatile *copy)
+{
+    volatile uint8_t before = *(volatile uint8_t *)&ctx->failed_attempts;
+
+    *(volatile uint8_t *)&ctx->failed_attempts = (uint8_t)(before + 1u);
+    if (*(volatile uint8_t *)&(*copy)->failed_attempts < (uint8_t)(before + 1u)) {
+        *(volatile uint8_t *)&(*copy)->failed_attempts = (uint8_t)(before + 1u);
+    }
+}
+
+static void auth_register_failure(auth_t *ctx)
+{
+    (void)ctx; /* already charged */
+}
+#else
+static inline void auth_charge_attempt(auth_t *ctx, auth_t *volatile *copy)
+{
+    (void)ctx;
+    (void)copy;
+}
+
 static void auth_register_failure(auth_t *ctx)
 {
     if (ctx->failed_attempts < AUTH_MAX_ATTEMPTS) {
         ctx->failed_attempts++;
     }
 }
+#endif
 
 auth_status_t auth_init(auth_t *ctx, const uint8_t *pin, size_t pin_len)
 {
@@ -66,12 +95,20 @@ auth_status_t auth_init(auth_t *ctx, const uint8_t *pin, size_t pin_len)
 
 auth_status_t auth_verify(auth_t *ctx, const uint8_t *entered, size_t len)
 {
+    auth_t *volatile ctx_copy = ctx;
+
     if (ctx == NULL || entered == NULL) {
         return AUTH_ERR_NULL;
     }
     if (ctx->failed_attempts >= AUTH_MAX_ATTEMPTS) {
         return AUTH_LOCKED;
     }
+#if AUTH_HARDENED
+    if (*(const volatile uint8_t *)&ctx->failed_attempts >= AUTH_MAX_ATTEMPTS) {
+        return AUTH_LOCKED;
+    }
+#endif
+    auth_charge_attempt(ctx, &ctx_copy);
     if (len != AUTH_PIN_LEN) {
         auth_register_failure(ctx);
         return AUTH_BAD_LENGTH;

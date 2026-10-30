@@ -153,7 +153,11 @@ def parse_module_arg(text: str) -> ModuleSpec:
     if not m:
         raise VirtulabError(f"Bad --module '{text}'. Use NAME=MODEL@BUS or NAME=MODEL@BUS:0x48, "
                             "e.g. temp=tmp108@i2c1:0x48")
-    return ModuleSpec(m["name"], m["model"], m["bus"], int(m["addr"], 0) if m["addr"] else None)
+    try:
+        address = int(m["addr"], 0) if m["addr"] else None
+    except ValueError:
+        raise VirtulabError(f"Bad address '{m['addr']}' in --module '{text}'. Use a number, e.g. 0x48") from None
+    return ModuleSpec(m["name"], m["model"], m["bus"], address)
 
 
 def _wizard(cfg: ProjectConfig, ns) -> tuple[bool, str]:
@@ -236,6 +240,7 @@ def init(ns) -> int:
     if ci_choice != "none":
         cfg.ci_provider = ci_choice
 
+    config.from_dict(cfg.to_dict())  # refuse a bad selection before writing anything
     created: list[str] = []
     if make_sample:
         created += scaffold(cfg, root, force=ns.force)

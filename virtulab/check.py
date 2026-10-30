@@ -183,9 +183,10 @@ def check(cfg: ProjectConfig, root: Path | None = None, tools: bool | str = True
                 res.add(ERROR, tid, f"option '{opt.name}' is required")
         if root is not None and tid in ("fuzz", "fault"):
             key = "harness" if tid == "fuzz" else "probe"
-            path = option(cfg, tid, key)
-            if not (root / path).is_file():
-                res.add(ERROR, tid, f"{key} file '{path}' not found")
+            value = option(cfg, tid, key)
+            absent = [p for p in ([value] if isinstance(value, str) else value) if not (root / p).is_file()]
+            if absent:
+                res.add(ERROR, tid, f"{key} file '{absent[0]}' not found")
                 continue
         missing = tool_status(tid, cfg.board) if tools else []
         if missing and tools == "warn":

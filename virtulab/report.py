@@ -113,7 +113,8 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-def render_markdown(outcome: Outcome, report_id: str = "default", checks_md: str = "") -> str:
+def render_markdown(outcome: Outcome, report_id: str = "default", checks_md: str = "",
+                    checks_ok: bool = True) -> str:
     board = outcome.board
     lines = [
         marker(report_id),
@@ -122,7 +123,9 @@ def render_markdown(outcome: Outcome, report_id: str = "default", checks_md: str
         "",
     ]
 
-    status = f"**Status:** {STATUS_LABELS[outcome.status]}"
+    # The headline covers every check, not only the emulator run.
+    label = STATUS_LABELS[FAILED if outcome.status == PASSED and not checks_ok else outcome.status]
+    status = f"**Status:** {label}"
     if outcome.run:
         status += f" · Emulation `{outcome.run.duration:.2f}s`"
     lines += [status, ""]

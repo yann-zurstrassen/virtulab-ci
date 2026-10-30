@@ -4,164 +4,162 @@
 
 ## The one-liner
 
-**Test your device's software before the hardware exists, on every change, without a lab.**
+**Security and safety evidence for your firmware on every pull request, without waiting for the bench.**
 
-You describe your hardware in one small file (which board, which sensors, which connections). VirtuLab builds a virtual copy of that device and runs your software on it automatically, every time someone changes the code.
+VirtuLab runs your firmware on a virtual board on every change. It then adds the checks that are too slow to repeat on real hardware: fuzzing, fault injection, coverage and memory budgets. Results land in one comment on the pull request. Hardware-in-the-loop (HIL) testing stays the final gate.
+
+---
+
+## Where we sit, and what is different
+
+Running chip designs and firmware without hardware is an old idea, and its history shapes this pitch. There have been three waves:
+
+| Wave | What it did | Who paid | How it ended |
+| :-- | :-- | :-- | :-- |
+| **Chip emulation** | Run a chip design before it is manufactured | Chip companies, six or seven figures, because a respin costs millions | It worked. Nearly every startup was bought by one of the big three EDA vendors |
+| **Virtual prototypes** | Software models of a chip so firmware can start before boards exist | Large chip and system companies | Mostly bought (Synopsys, Intel/Wind River) |
+| **Board simulation for developers** (Renode, Wokwi, "virtual lab" startups) | Simulate a dev board and its sensors | Firmware teams on small budgets | Mostly stayed small or open source. A $50 dev kit is the competitor |
+
+VirtuLab is built on the third wave (it runs on Renode and QEMU). **The emulation is not the product.** Two things are different:
+
+1. **We sell evidence, not a substitute for the board.** "Write firmware before the board arrives" loses to a cheap dev kit. "Fuzz the parser and try 36 instruction skips through the PIN check on every PR" does not, because nobody does that on a shared bench.
+2. **Our buyer is closer to the first wave's buyer.** Medical, automotive and industrial teams pay for late bugs in recalls, failed certification and security incidents. They pay for evidence, and they ask how far to trust it. That is why every sensor model is mapped to its datasheet ([`DATASHEETS.md`](DATASHEETS.md)) and every limit is written down ([`FIDELITY.md`](FIDELITY.md), [`WHERE_EMULATION_STOPS.md`](WHERE_EMULATION_STOPS.md)).
+
+Two lessons from that history still apply to us:
+
+- **Building models is the bottleneck.** The CPU emulator is the easy part. Every sensor needs a model someone writes and checks. Earlier companies that could not automate this stalled. We treat the sensor catalogue as a cost to keep small, not as the moat.
+- **The usual exit is acquisition.** If the security angle works, we become a target for EDA or security tool vendors. That is a plan, not a risk.
 
 ---
 
 ## The problem, in plain words
 
-Companies that build connected devices (medical, industrial, automotive, IoT) write software that runs on a small chip, "firmware". Testing it is slow and painful:
+Companies that build connected devices (medical, industrial, automotive) write software that runs on a small chip, "firmware". The bugs that hurt most are the ones normal tests miss:
 
-- **You need the physical hardware.** Boards arrive late, are expensive, and there are never enough for every developer.
-- **Every sensor and connection type is its own mini-project.** Talking to a temperature sensor over one kind of wiring (a "protocol": I²C, SPI, UART) means reading a 60-page datasheet and writing test setups by hand. Add a second sensor and you redo much of it.
-- **Tests live on one person's desk.** "It works on Marc's board" is not the same as "it is checked on every change".
-- **Setting up automated testing (CI) takes days or weeks** of specialist work, so many teams simply don't, and bugs reach the real device.
-- **The worst bugs are the ones normal tests miss**: memory that quietly grows too large, malformed input that crashes the device, a security check that can be skipped.
+- **Malformed input that crashes the device.** A bench run rarely sends a 33-byte message where 32 is the limit.
+- **A security check that can be skipped.** A glitch or an attacker skips one instruction, and a wrong PIN is accepted.
+- **Memory that quietly grows too large**, until the device runs out on a customer's site.
 
-The result: bugs are found late (expensive), or by customers (very expensive).
+These bugs are found late, on the bench, or by customers and auditors. Security evidence usually arrives after hardware testing, when changes are most expensive. The bench is shared and slow, so these checks are not repeated on every change.
 
 ---
 
 ## What VirtuLab does
 
-1. **You choose your hardware**, not write test infrastructure.
-2. **You tick the tests you want.**
-3. **You get automated testing** that runs on every code change and tells you pass/fail in plain language.
+1. **On every pull request**, it builds the firmware and runs its tests on a virtual Cortex-M board.
+2. **It runs the security and safety checks**: fuzzing, fault injection, coverage, and flash and RAM budgets against the base branch.
+3. **It posts one comment** on the pull request: what ran, what failed, on which machine, and where emulation stops.
 
-No lab, no boards on desks, no weeks of setup.
+Unit tests and footprint tracking are what bring a team in. The security evidence is why they stay.
 
 ---
 
-## The setup experience (the part we want to insist on)
+## The tests
 
-Everything starts with a short page that opens in the browser (`virtulab ui`). It is a guided form, in four steps:
-
-| Step | What the user does | What they see |
+| Test | Plain-language question it answers | Typical bug it catches |
 | :-- | :-- | :-- |
-| **1. Pick a board** | Choose from a list (e.g. an STM32 Discovery board) | What the board can connect to: its available buses |
-| **2. Filter by protocol** | Choose I²C, SPI or UART ("how does my sensor talk?") | Only the sensors that fit that wiring |
-| **3. Add sensors** | Click a temperature or pressure sensor, pick where it's plugged in | A live diagram of the board with the sensor attached |
-| **4. Pick tests** | Tick the checks they care about | A plain-language explanation of each |
+| **Fuzzing** | What happens when we throw millions of malformed inputs at the parser? | Crashes and memory errors from bad data |
+| **Fault injection** | If one instruction is skipped, does a security check still hold? | A weakened PIN or authentication check |
+| **Coverage** | How much of the code do our tests actually exercise? | Untested code hiding in plain sight |
+| **Footprint** | Did this change make the program bigger or hungrier than allowed? | "Someone added a huge buffer and we ran out of memory" |
+| **Unit tests** | Does the code do what it should, on the virtual device? | Logic errors, wrong sensor handling |
 
-At every moment a **"board check"** tells them whether the setup is possible, *before* anything runs. For example:
+The first two are the differentiator: ordinary unit tests pass, and these checks fail.
 
-- "That sensor speaks I²C, but you plugged it into an SPI connection."
-- "Two sensors are using the same address on the same bus."
-- "This test needs a different type of board."
+---
 
-Then one click gives them:
+## The demo (about 90 seconds, start to finish)
 
-- a **project file** (`virtulab.yml`) describing their hardware, readable by a human, saved with their code;
-- the **CI setup file** for GitHub or GitLab, already written;
-- **sample code** that passes on the first run, so they see green immediately and can replace it with their own.
+Command: `virtulab demo`. Transcript: [`demo-run.txt`](demo-run.txt). The same story, as five pull requests with their real report comments: [`demo-prs/`](demo-prs/).
 
-Not everyone likes browsers. The same flow also works as a **terminal questionnaire** (`virtulab init`) or by editing the file directly. They all produce the same project file.
+1. A project is created, and every test goes **green**.
+2. Three "bad changes" are made, one at a time. Each is the kind of mistake a real developer makes:
+   - a big memory buffer added → **caught by the footprint budget**
+   - a one-character off-by-one in a data parser → **caught by fuzzing**
+   - a redundant PIN check removed "to save flash" → **caught by fault injection**
+3. Every ordinary unit test **still passes** in all three cases. Those bugs would have shipped.
 
-### What the hardware description looks like
+> Suggested story for a live pitch: "Everything is green. Someone makes a small change. Their tests are still green. VirtuLab goes red. Here is why."
 
-This is roughly everything a user writes to say "STM32 board with a temperature sensor and a pressure sensor":
+---
+
+## Who it's for
+
+- **Firmware teams in medical, automotive and industrial products**, where a late bug costs a recall, a failed certification or a security incident.
+- **Teams of 20+ engineers** where the bench is shared and slow.
+- **Security and compliance owners** who need evidence that checks hold up, on every change rather than once before release.
+
+*Open question: who signs the purchase, the firmware team lead or the security/compliance owner? The pitch and the price differ.*
+
+---
+
+## Supporting: setup in minutes
+
+Setup is what makes a trial cheap. It supports the pitch but it is not the lead message.
+
+One file, `virtulab.yml`, describes the board, the sensors, how they are wired and which tests run. It can be written by hand, through a guided page in the browser (`virtulab ui`) or through a terminal questionnaire (`virtulab init`):
 
 ```yaml
 board: stm32f4_discovery
 modules:
   temp:     { model: tmp108, bus: i2c1, address: 0x48 }
   pressure: { model: bmp180, bus: i2c1 }
-tests: [unit, footprint, coverage, fuzz]
+tests:
+  unit: {}
+  footprint: { flash_increase: 4K, ram_increase: 2K }
+  fuzz: { harness: fuzz/fuzz.c, sources: [src/parser.c], seconds: 20 }
 ```
 
-Four lines instead of weeks of test infrastructure. (This is the single most important message for the pitch.)
+A **board check** catches impossible setups before anything runs: a sensor wired to the wrong bus, two sensors on the same address, a test that needs a different board. One command writes the CI file for GitHub or GitLab.
 
----
+**Sensor models** let firmware talk to sensors over I²C, SPI and UART on the virtual board. Each model shows how far to trust it:
 
-## The friction it removes: protocols and sensors
-
-**Today, without VirtuLab**, supporting a new sensor in your tests means:
-read the datasheet, write a simulation of the chip, wire it to the emulator, wire the right communication protocol, write the test harness, and repeat for the next sensor.
-
-**With VirtuLab**, a sensor is a catalogue item.
-Pick it, say where it's plugged in, done. The catalogue already knows:
-
-- **which protocol it speaks** (so the tool refuses wrong wiring and explains why);
-- **which addresses are valid** (so conflicts are caught up front);
-- **how trustworthy the simulation is**, shown as one of two labels:
-  - *Datasheet model*: written against the manufacturer's datasheet, accurate.
-  - *Built-in model*: provided by the emulator, partial, and the tool tells you what's missing.
-
-The long-term value is in the catalogue: **every sensor added once benefits every customer forever.** That is the business moat, and also the thing to size and prioritise.
-
----
-
-## The tests the user can select
-
-| Test | Plain-language question it answers | Typical bug it catches |
-| :-- | :-- | :-- |
-| **Unit tests** | Does the code do what it should, on the virtual device? | Logic errors, wrong sensor handling |
-| **Footprint** | Did this change make the program bigger or hungrier than allowed? | "Someone added a huge buffer and we ran out of memory" |
-| **Coverage** | How much of the code do our tests actually exercise? | Untested code hiding in plain sight |
-| **Fuzzing** | What happens when we throw thousands of malformed inputs at it? | Crashes and memory errors from bad data |
-| **Fault injection** | If an attacker skips one instruction, does a security check still hold? | A weakened PIN or authentication check |
-
-The last three are the differentiator: ordinary unit tests pass on all of them, and these tests don't.
-
----
-
-## The demo (about 90 seconds, start to finish)
-
-Command: `virtulab demo`. Transcript: `docs/demo-run.txt`.
-
-1. A project is created, and every test goes **green**.
-2. Three "bad changes" are made, one at a time. Each is the kind of mistake a real developer makes:
-   - a big memory buffer added → **caught by the footprint budget**
-   - a one-character off-by-one in a data parser → **caught by fuzzing**
-   - a security check quietly weakened → **caught by fault injection**
-3. Every ordinary unit test **still passes** in all three cases, which is the whole point: those bugs would have shipped.
-
-> Suggested story for a live pitch: "Everything is green. Someone makes a small change. Their tests are still green. VirtuLab goes red. Here is why."
-
----
-
-## Who it's for (to refine)
-
-- **Teams building connected hardware** that cannot test on real devices for every change: startups, and engineering teams in regulated industries (medical, automotive, industrial) where bugs are costly.
-- **Teams moving to a "security by default" posture** who need evidence that checks hold up (fuzzing and fault injection give them that).
-- **Developers new to embedded**, because the guided setup removes the specialist knowledge needed to start.
-
-*Open question: who is the first paying customer, the individual developer, the team lead, or the company's security/compliance owner?*
+- *Datasheet model*: written against the manufacturer's datasheet, with every behaviour mapped to the datasheet section and the line of code ([`DATASHEETS.md`](DATASHEETS.md)).
+- *Built-in model*: provided by the emulator, partial, and the tool says what is missing.
 
 ---
 
 ## What exists today (the MVP)
 
-- Guided setup in the browser and in the terminal
-- A board and wiring checker that explains errors in plain language
-- Five selectable test types, all verified working together
-- Automatic generation of the CI setup for GitHub and GitLab
-- Sample code that passes first time
-- A scripted end-to-end demo with a recorded run
-- If a machine lacks the needed tools, the tests run in a ready-made Docker image
+- Five test types, run together, reported in one PR comment
+- Five demo pull requests with real results, including two where all unit tests pass and the security checks fail
+- 11 sensor models on I²C, SPI and UART, each mapped to its datasheet
+- A real vendor driver (Sensirion SHT3x) running unchanged against our model
+- Guided setup in the browser and in the terminal, with a board checker
+- CI files generated for GitHub and GitLab, and a Docker image when tools are missing
 
 ## What does not exist yet (be honest in front of customers)
 
-- **Sensor catalogue is tiny: two sensors** (a temperature one and a pressure one), both on the I²C protocol. No SPI or UART sensors yet, though the board supports those connections. *This is the biggest gap relative to the pitch.*
-- **One board** can host sensors. Other boards can run code tests only.
-- **Fault injection doesn't combine with sensors** today (it needs a different type of virtual board).
-- **The generated GitHub setup has not been run on GitHub yet**, and the one-line CI action needs a new Docker image published before it works for outsiders.
-- **Fuzzing runs on the developer's computer**, not on the virtual device, so it tests the logic, not the hardware behaviour.
-- **Fault injection tests one kind of attack** (skipping a single instruction).
-- Not started: importing chip definitions from vendors, pin/clock planning, debugging/flashing, support for existing build systems, and standard test-report formats.
+- **The checks only run on projects shaped like our samples.** Fault injection is wired to the sample `src/auth.c`, and VirtuLab compiles the sources itself. A team cannot yet point it at its own build and its own functions. *This is the biggest gap relative to the pitch.*
+- **The generated GitHub workflow has not run on GitHub yet**, and the one-line CI action needs a published Docker image before outsiders can use it.
+- **Fuzzing runs on the host**, on the parser logic, not on the virtual device.
+- **Fault injection tests one kind of attack** (skipping a single instruction, first execution only), and only on QEMU boards, so it does not combine with sensors.
+- **Coverage is line and branch only, no MC/DC**, which safety standards ask for.
+- **No sensor model has been compared with real hardware.** They are checked against documents, not silicon.
+- Not started: support for existing build systems, standard test-report formats (JUnit XML), importing chip definitions, debugging and flashing.
 
 ---
 
-## Questions for you, to refine the pitch
+## Focus now
 
-1. **Who feels the pain most**, and who pays: developer, team lead, or security/compliance?
-2. **Which message wins**: "no hardware needed" (speed), "setup in minutes" (friction), or "catches the bugs ordinary tests miss" (safety)? The demo supports all three, but a pitch needs one lead.
-3. **Which sensors and protocols do your target customers actually use?** This decides what we add next, and it is the strongest lever for credibility.
-4. **Is "catalogue of simulated sensors" our product, or is the product the CI automation?** The moat and the pricing differ completely.
-5. **Open source core vs. paid service?** Today everything is local and free to run.
-6. **What would a customer need to see in a 10-minute call to say "I'd try this"?** We may be able to build exactly that demo.
+The history says the buyer decides the business. The security angle is our answer, but so far it is only proven on our own demo. The next steps, in order:
+
+1. **Run the generated workflow on GitHub for real**, and open the five demo PRs as actual pull requests.
+2. **Accept an existing build.** Take the ELF the team's CMake or Make build produces, and let `virtulab.yml` name the functions to fuzz and fault-inject (for example `fault: { function: verify_pin }`).
+3. **Find something in firmware we did not write.** Pick an open-source project with a bootloader or authentication check and run the checks on it unchanged. A real finding there is the pitch.
+4. **Show that result to 3 to 5 teams in regulated industries** before building more. What they ask for (MC/DC, multi-instruction glitches, reports a certifier accepts) sets the next quarter.
+
+**Paused:** adding sensors to the catalogue, and replacing vendor IDEs ([`ROADMAP.md`](../ROADMAP.md)). The datasheet mapping stays the quality bar for the 11 models we have.
+
+---
+
+## Questions to refine the pitch
+
+1. **Who signs**: the firmware team lead, or the security/compliance owner?
+2. **What would a regulated team need to see** to trust the evidence: a finding in real firmware, a report format their certifier accepts, or MC/DC coverage?
+3. **Which security checks matter most to them** after fuzzing and single-skip fault injection?
+4. **Open-source core vs. paid service?** Today everything is local and free to run. A likely split: the CI and engine open, the evidence reports and advanced checks paid.
+5. **What would a customer need to see in a 10-minute call to say "I'd try this"?** Step 3 above is our best guess.
 
 ---
 
@@ -169,7 +167,10 @@ Command: `virtulab demo`. Transcript: `docs/demo-run.txt`.
 
 - **Firmware**: the software that runs inside a device (thermostat, pacemaker, car module).
 - **Emulator / virtual board**: a program that behaves like the real chip, so firmware can run on a normal computer.
+- **HIL (hardware-in-the-loop)**: testing the firmware on the real board, connected to real or simulated inputs. The final gate before release.
 - **Protocol (I²C, SPI, UART)**: the "language" two chips use to talk over wires. I²C and SPI are common for sensors; UART is simple serial.
 - **CI (continuous integration)**: automatic checks that run every time someone changes the code.
 - **Fuzzing**: automatically feeding a program huge amounts of weird input to see if it breaks.
 - **Fault injection**: simulating a hardware glitch or attack, such as skipping one instruction, to see if security holds.
+- **MC/DC**: a strict coverage measure that safety standards for aviation and automotive ask for.
+- **EDA**: electronic design automation, the software chip designers use. Synopsys, Cadence and Siemens (formerly Mentor) are the big three.

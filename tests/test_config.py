@@ -222,10 +222,13 @@ class CatalogTest(unittest.TestCase):
         workflow = yamlite.loads(text)
         steps = workflow["jobs"]["virtulab"]["steps"]
         self.assertEqual([s.get("uses") for s in steps],
-                         ["actions/checkout@v4", cigen.ACTION, "actions/upload-artifact@v4"])
-        self.assertEqual(workflow["permissions"]["pull-requests"], "write")
-        self.assertIn("fuzz/crashes", steps[2]["with"]["path"])
-        self.assertEqual(steps[2]["with"]["if-no-files-found"], "ignore")
+                         ["actions/checkout@v4", cigen.ACTION, "actions/upload-artifact@v4",
+                          "actions/upload-artifact@v4"])
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+        self.assertEqual(workflow["jobs"]["report"]["permissions"]["pull-requests"], "write")
+        self.assertEqual(steps[2]["with"]["if-no-files-found"], "error")
+        self.assertIn("fuzz/crashes", steps[3]["with"]["path"])
+        self.assertEqual(steps[3]["with"]["if-no-files-found"], "ignore")
         path, text = cigen.render(cfg, "gitlab")
         self.assertEqual(path, ".gitlab-ci.yml")
         self.assertIn("virtulab run --baseline", text)

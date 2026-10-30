@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import VirtulabError, __version__, github
-from .baseline import build_baseline
+from .baseline import NO_REF, NOTHING_TO_COMPARE, build_baseline
 from .boards import BOARDS, get_board
 from .build import BuildConfig, addr2line, build
 from .emulator import run as run_emulator
@@ -151,6 +151,9 @@ def _report_diagnostics(root: Path, outcome: Outcome) -> None:
 
 
 def _check_budgets(opts: Options, outcome: Outcome) -> None:
+    budgeted = opts.max_flash_increase is not None or opts.max_ram_increase is not None
+    if budgeted and not outcome.baseline and outcome.baseline_note not in (NO_REF, NOTHING_TO_COMPARE):
+        outcome.budget_violations.append(f"The memory budget could not be checked: {outcome.baseline_note}.")
     for label, delta, limit in (
         ("Flash", outcome.flash_delta, opts.max_flash_increase),
         ("RAM", outcome.ram_delta, opts.max_ram_increase),
@@ -271,7 +274,7 @@ def finish(opts: Options, outcome: Outcome, root: Path, work_dir: Path,
         where = outcome.fault.location or f"pc={outcome.fault.pc:#010x}"
         print(f"💥 {outcome.fault.kind} in {outcome.fault.function or '?'} at {where}")
 
-    markdown = render_markdown(outcome, opts.report_id, checks_md)
+    markdown = render_markdown(outcome, opts.report_id, checks_md, checks_ok=extra_ok)
     report_path = work_dir / "report.md"
     report_path.write_text(markdown)
     _report_diagnostics(root, outcome)
@@ -343,6 +346,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--only", metavar="TESTS",
                      help="with virtulab.yml: run only these tests, e.g. unit,fuzz")
     run.add_argument("--skip", metavar="TESTS", help="with virtulab.yml: skip these tests")
+    run.add_argument("--fuzz-seconds", type=int, metavar="N", help="with virtulab.yml: fuzzing time budget")
 
     sub.add_parser("boards", help="list supported boards")
     sub.add_parser("action", help="run with GitHub Action inputs (INPUT_* variables)")
@@ -415,6 +419,11 @@ def run_command(ns: argparse.Namespace) -> int:
     env = dict(os.environ)
     root = Path(env.get("INPUT_WORKING_DIRECTORY", "").strip() or ".") if action else Path(ns.directory)
     cfg = config.load(root) if root.is_dir() else None
+    if cfg is not None and action:
+        ignored = [k.lower() for k in ("LDFLAGS", "LINKER_SCRIPT", "PERIPHERALS") if env.get(f"INPUT_{k}", "").strip()]
+        if ignored:
+            raise VirtulabError(f"Action input(s) {', '.join(ignored)} cannot be combined with virtulab.yml. "
+                                "Set them in the file.")
     if cfg is None:
         if not action and root.is_dir() and not any(f.suffix.lower() in (".c", ".cc", ".cpp", ".cxx", ".s") for f in root.rglob("*")):
             raise VirtulabError(f"No virtulab.yml and no C sources in '{root}'. Set up a project first: "
@@ -424,14 +433,27 @@ def run_command(ns: argparse.Namespace) -> int:
     if action:
         base, overrides = options_from_env(env), _env_overrides(env)
         only, skip = _list(env.get("INPUT_TESTS", "").strip()), None
+        fuzz_seconds = int(env.get("INPUT_FUZZ_SECONDS", "").strip() or 0)
+        # Firmware, fuzz harnesses and tests run below this process and must not inherit the token.
+        for secret in ("INPUT_GITHUB_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN",
+                       "ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
+            os.environ.pop(secret, None)
     else:
         base = options_from_args(ns)
+        ignored = [flag for flag, value in (("--ldflags", ns.ldflags), ("--linker-script", ns.linker_script),
+                                            ("--no-runtime", ns.no_runtime), ("--peripherals", ns.peripherals))
+                   if value]
+        if ignored:
+            raise VirtulabError(f"{', '.join(ignored)} cannot be combined with virtulab.yml. Set it in the file.")
         overrides = {k: v for k, v in {
             "board": ns.board, "sources": ns.sources, "include": ns.include or None,
             "cflags": ns.cflags or None, "timeout": ns.timeout}.items() if v}
         only, skip = _list(ns.only), _list(ns.skip)
+        fuzz_seconds = ns.fuzz_seconds
     for key, value in overrides.items():
         setattr(cfg, key, value)
+    if fuzz_seconds and "fuzz" in cfg.tests:
+        cfg.tests["fuzz"]["seconds"] = fuzz_seconds
     if cfg.board not in BOARDS:
         raise VirtulabError(f"Unknown board '{cfg.board}'. Run `virtulab catalog` to list boards.")
     return run_project(select_tests(cfg, only, skip), root, base)

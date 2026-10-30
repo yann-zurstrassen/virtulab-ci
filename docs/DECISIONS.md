@@ -83,3 +83,12 @@ Recorded because they would have produced wrong results silently.
 ## Pre-existing engine quirk, not fixed
 
 The "Largest symbol size changes" table can list `__preinit_array_start` with a huge "before/after" size (for example 536,865,004). It comes from `nm --print-size` output in `virtulab/build.py::symbol_sizes`. It is visible in the PR 2 comment. It does not affect the Flash/RAM totals, which come from `arm-none-eabi-size`.
+
+## Review fixes (2026-10-30)
+
+- **Checks fail closed.** A fault sweep that applied no fault is `inconclusive` and fails. Zero tests fails. A budget that cannot be compared fails, except when there is no ref, or the baseline lacks these sources because the code is new.
+- **One check path.** `make` and CI run `virtulab.yml` through `suite.py`. `tools/ci_report.py`, `tools/gcov_summary.awk` and `tools/fault_inject.sh` were removed, and the numbers in `docs/demo-prs/`, `docs/runs/` and the README's recorded runs predate this.
+- **PR code never sits next to a write token.** Checks run in a read-only job. A second job holds the token, never checks out the PR and posts the report with `gh`. The PR-built image is not used there, because a PR can edit the `Dockerfile`.
+- **The baseline fetch no longer uses `--depth` on a full clone.** It truncated local history to one commit.
+- **Hardened `auth.c` charges the attempt before comparing,** over two routes to the counter, and checks the lockout twice. Three probes state one property each. The result is for `-Os`-style builds of these two configurations: at `-O0` the first sweep found bypasses, so other flags need their own sweep.
+- **Datasheet citations:** each row was applied only if a text snippet was found on the cited page. Weak snippets for the AT and NMEA rows were then read by hand. A match shows the page supports the row; it was not a line-by-line audit of every number.

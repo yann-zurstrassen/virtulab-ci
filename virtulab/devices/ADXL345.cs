@@ -1,7 +1,7 @@
 //
 // VirtuLab device library: Analog Devices ADXL345 3-axis accelerometer (SPI).
 //
-// Written from the ADXL345 datasheet (Rev. G), SPI 4-wire interface:
+// Written from the ADXL345 datasheet, SPI 4-wire interface (checked against Rev. 0):
 //   - first byte of a transaction: bit 7 = read, bit 6 = multiple bytes
 //     (address auto-increments), bits 5..0 = register address
 //   - DEVID (0x00) reads 0xE5

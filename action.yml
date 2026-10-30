@@ -42,6 +42,10 @@ inputs:
     description: 'Extra devices on the board (Renode boards only): a .repl file path, or inline lines such as "tmp108: VirtuLab.TMP108 @ i2c1 0x48"'
     required: false
     default: ''
+  fuzz_seconds:
+    description: 'Overrides the fuzzing time budget in virtulab.yml'
+    required: false
+    default: ''
   timeout:
     description: 'Emulation timeout, e.g. 30s or 2m. Default: 30s'
     required: false

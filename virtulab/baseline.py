@@ -11,6 +11,8 @@ from . import VirtulabError
 from .build import BuildConfig, Sizes, build
 
 NULL_SHA = "0" * 40
+NO_REF = "no baseline ref"
+NOTHING_TO_COMPARE = "the baseline does not contain these sources yet"
 
 
 @dataclass
@@ -44,7 +46,7 @@ def build_baseline(
 ) -> tuple[Baseline | None, str | None]:
     """Return (baseline, None) on success or (None, reason) when it is unavailable."""
     if not ref or ref == NULL_SHA:
-        return None, "no baseline ref"
+        return None, NO_REF
 
     toplevel = _git(root, "rev-parse", "--show-toplevel")
     if toplevel.returncode != 0:
@@ -52,11 +54,14 @@ def build_baseline(
     repo_root = Path(toplevel.stdout.decode().strip())
     project_subdir = root.resolve().relative_to(repo_root.resolve())
 
-    # Shallow CI checkouts usually lack the baseline commit. If the fetch fails
-    # (no remote, offline) fall back to the ref as it exists locally.
-    fetched = _git(root, "fetch", "--no-tags", "--quiet", "--depth=1", "origin", ref)
-    target = "FETCH_HEAD" if fetched.returncode == 0 else ref
-    resolved = _git(root, "rev-parse", "--verify", "--quiet", f"{target}^{{commit}}")
+    # Only a shallow CI checkout lacks the baseline commit. Never pass --depth to a full clone:
+    # that would truncate the user's history to one commit.
+    resolved = _git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    if resolved.returncode != 0:
+        shallow = _git(root, "rev-parse", "--is-shallow-repository").stdout.strip() == b"true"
+        fetch = ["fetch", "--no-tags", "--quiet", *(["--depth=1"] if shallow else []), "origin", ref]
+        if _git(root, *fetch).returncode == 0:
+            resolved = _git(root, "rev-parse", "--verify", "--quiet", "FETCH_HEAD^{commit}")
     if resolved.returncode != 0:
         return None, f"baseline ref '{ref}' not found"
     sha = resolved.stdout.decode().strip()
@@ -75,6 +80,8 @@ def build_baseline(
     try:
         result = build(src_dir / project_subdir, cfg, work_dir / "baseline-build")
     except VirtulabError as exc:
+        if "matched no" in str(exc):  # the code is new in this change: there is nothing to compare with
+            return None, NOTHING_TO_COMPARE
         return None, f"baseline did not build ({exc})"
     if not result.ok or result.sizes is None:
         return None, f"baseline {sha[:7]} failed to build"

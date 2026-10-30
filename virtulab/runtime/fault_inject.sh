@@ -6,6 +6,10 @@
 # first time it is reached, move the PC past it and let the firmware finish.
 # The probe fails only if a wrong PIN is granted, so FAIL means "bypass".
 #
+# Fails closed: a sweep that could not apply its faults is `inconclusive` (exit 2), never
+# a pass. That covers no instructions found, no fault applied, and a run where a fault was
+# not applied and the firmware did not finish either (gdb or QEMU did not work).
+#
 # Scope: instruction skip, first execution only, one fault per run. It does not
 # model bit flips, multi-fault glitches, or real voltage/clock glitch behaviour.
 set -euo pipefail
@@ -148,6 +152,13 @@ echo "== Fault injection: single instruction skip =="
 echo "image: $elf  board: $board  gdb: $gdb"
 echo "original run (no fault): $original"
 [ "$original" = "denied" ] || { echo "VERDICT: baseline run is not clean ($original); refusing to inject" ; exit 2; }
+inconclusive() {
+    echo "VERDICT: inconclusive, $1"
+    echo "FAULT status=inconclusive swept=${applied_count:-0} bypass=${bypass:-0} crashed=${crashed:-0}"
+    exit 2
+}
+list_instructions > "$work/instructions" || inconclusive "the instructions of $source_file could not be listed"
+[ -s "$work/instructions" ] || inconclusive "no instructions found for $source_file (does the path match the build?)"
 printf '%-12s %-26s %-28s %-9s %s\n' "tampered" "function+offset" "instruction" "original" "faulted"
 
 swept=0 applied_count=0 bypass=0 denied=0 crashed=0 not_reached=0
@@ -157,7 +168,11 @@ while read -r addr size name offset text; do
     read -r result applied <<< "$(run_faulted "0x$addr" "$resume")"
     swept=$((swept + 1))
     if [ "$verbose" = yes ]; then printf 'sweep 0x%s %s+%s applied=%s result=%s\n' "$addr" "$name" "$offset" "$applied" "$result"; fi
-    if [ "$applied" = no ]; then not_reached=$((not_reached + 1)); continue; fi
+    if [ "$applied" = no ]; then
+        # A firmware that ran to the end never reached this instruction. Anything else is a broken run.
+        [ "$result" = denied ] || inconclusive "no fault applied at 0x$addr and the firmware did not finish ($result)"
+        not_reached=$((not_reached + 1)); continue
+    fi
     applied_count=$((applied_count + 1))
     case "$result" in
         BYPASS) bypass=$((bypass + 1))
@@ -165,9 +180,10 @@ while read -r addr size name offset text; do
         denied) denied=$((denied + 1)) ;;
         *) crashed=$((crashed + 1)) ;;
     esac
-done < <(list_instructions)
+done < "$work/instructions"
 
 echo "swept=$swept applied=$applied_count not_reached=$not_reached denied=$denied crashed_or_hung=$crashed bypass=$bypass"
+[ "$applied_count" -gt 0 ] || inconclusive "no instruction of $source_file was reached by the probe"
 if [ "$bypass" -gt 0 ]; then
     verdict="auth bypass reachable by single instruction skip"
     status=bypass

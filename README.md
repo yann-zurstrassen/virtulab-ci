@@ -62,7 +62,7 @@ The sample firmware `init` can create (`--template starter`) is built to pass on
 
 > **A real vendor driver, unchanged.** [`examples/sensirion-sht3x`](examples/sensirion-sht3x) runs Sensirion's own SHT3x driver on the virtual board against our SHT31 model (`./run.sh`). Doing that found and fixed three mistakes in the model.
 
-> **Where each sensor behaviour comes from.** [`docs/DATASHEETS.md`](docs/DATASHEETS.md) lists, for every sensor, what its datasheet says, whether VirtuLab models it, and the file in the model, the sample driver and the sample test. The setup page shows the same with the code next to it. A test fails when a reference stops matching the code.
+> **Where each sensor behaviour comes from.** Every row cites the document, revision and page it was checked against, and each document's SHA-256 is recorded. [`docs/DATASHEETS.md`](docs/DATASHEETS.md) lists, for every sensor, what its datasheet says, whether VirtuLab models it, and the file in the model, the sample driver and the sample test. The setup page shows the same with the code next to it. A test fails when a reference stops matching the code.
 
 > **Honest limits.** The GitHub and GitLab files are generated and structurally validated, and the same steps run in the Docker image locally, but the workflows have not been executed on GitHub. Fuzzing is host-side, fault injection is single instruction skip, coverage is line and branch. See [docs/FIDELITY.md](docs/FIDELITY.md).
 
@@ -95,7 +95,7 @@ PRs 4 and 5 are the point: every unit test and the footprint check are green, an
 
 ## 🤖 Real example sticky comment
 
-This is the comment for PR 5, produced by `make -k footprint coverage fuzz fault report` and assembled by `tools/ci_report.py`, the script the CI `report` job runs. The collapsed emulator-log and symbol-table sections are left out here; the full text is in [pr5.md](docs/demo-prs/pr5.md). **The GitHub Actions workflow itself has not been run**, so this comment was produced locally, not posted by CI.
+This is the comment recorded for PR 5 before the checks were merged into one path, so its format and numbers are historical. Today the headline also covers every check, so this run would read ❌ FAILED. The collapsed emulator-log and symbol-table sections are left out here; the full text is in [pr5.md](docs/demo-prs/pr5.md). **The GitHub Actions workflow itself has not been run**, so this comment was produced locally, not posted by CI.
 
 > ### 🤖 VirtuLab CI Report — `lm3s6965evb` (Cortex-M3, QEMU)
 >
@@ -195,7 +195,7 @@ hours saved per week: 20.0
 | `make test` (compile, link, emulate 28 tests) | 0.6 s |
 | `make coverage` | 0.8 s |
 | `make fuzz` | 10 s (the time budget; CI is set to 60 s) |
-| `make fault` (56 skipped instructions, each a QEMU + GDB run) | 40 s |
+| `make fault` (one sweep then; now three, one per security property) | 40 s |
 
 These say how long the checks take on a laptop. They say nothing about your bench queue.
 
@@ -224,7 +224,7 @@ Known divergences from real hardware and what to validate on the bench: **[docs/
       pull request / push
               │
               ▼
-┌──────────────────────────── GitHub Actions: jobs run in parallel ───────────────────────────┐
+┌───────────────────────── GitHub Actions: one read-only `checks` job ────────────────────────┐
 │                                                                                             │
 │  build-test      footprint        coverage      fuzz              fault-injection           │
 │  arm-none-eabi   build base ref   host gcov     host parser       QEMU + GDB: skip one      │
@@ -235,8 +235,8 @@ Known divergences from real hardware and what to validate on the bench: **[docs/
 │   exit code)                                                                                │
 └───────┬────────────────┬──────────────┬──────────────┬───────────────────┬──────────────────┘
         └────────────────┴──────────────┴──────┬───────┴───────────────────┘
-                                               ▼   one result line per job in .ci/
-                         tools/ci_report.py ──▶ one sticky PR comment
+                                               ▼   .virtulab/report.md
+                         read-only job ──▶ `report` job (write token, no PR code) ──▶ one sticky PR comment
                                                ▲
                     HIL / bench: final gate, not part of this repo
 ```
@@ -254,37 +254,9 @@ make help          # coverage, fuzz, fault, footprint, report
 
 Needs `python3`, `arm-none-eabi-gcc`, `qemu-system-arm`, a host C compiler, and for `make fault` an Arm-capable GDB (`arm-none-eabi-gdb` or `gdb-multiarch`).
 
-The CI jobs call exactly those targets. Excerpt of [`.github/workflows/firmware-ci.yml`](.github/workflows/firmware-ci.yml):
+`make` and CI run the same thing: the tests in the root [`virtulab.yml`](virtulab.yml) through the engine. In [`.github/workflows/firmware-ci.yml`](.github/workflows/firmware-ci.yml), the `checks` job runs the pull request's code with a read-only token. A separate `report` job holds the write token, never checks out that code, and posts the report.
 
-```yaml
-  build-test:
-    name: Build & unit tests (QEMU)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install toolchain and emulator
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TOOLS
-      - name: make test
-        run: make test
-
-  fault-injection:
-    name: Fault injection (single instruction skip)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install toolchain, emulator and GDB
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TOOLS
-      - name: make fault
-        run: make fault
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fragment-fault
-          path: .ci/fault.txt
-          if-no-files-found: ignore
-```
-
-The packaged GitHub Action (`uses: yann-zurstrassen/virtulab-ci@v1`: tests and footprint only, no fuzz or fault injection) is documented in [docs/ENGINE.md](docs/ENGINE.md). 🚧 It was not re-run in this work.
+The packaged GitHub Action (`uses: yann-zurstrassen/virtulab-ci@v1`) runs every test selected in `virtulab.yml` and is documented in [docs/ENGINE.md](docs/ENGINE.md). 🚧 It was not re-run in this work.
 
 ## 🎯 Supported targets
 
@@ -292,7 +264,7 @@ The packaged GitHub Action (`uses: yann-zurstrassen/virtulab-ci@v1`: tests and f
 | :--- | :--- | :--- |
 | `lm3s6965evb` (Cortex-M3) | QEMU | ✅ Runs the full demo here: unit tests, footprint, fault injection (coverage and fuzz run on the host) |
 | `lm3s811evb`, `stm32vldiscovery`, `netduinoplus2`, `microbit`, `mps2-an385`, `mps2-an386`, `mps2-an500` | QEMU | ✅ The engine's CRC example passes on each ([`docs/runs/engine-tests.txt`](docs/runs/engine-tests.txt)). 🚧 PLANNED for the security demo: not run |
-| `stm32f4_discovery` + I2C sensor | Renode | 🚧 PLANNED here: Renode is not installed on the authoring machine ([`docs/ENGINE.md`](docs/ENGINE.md)) |
+| `stm32f4_discovery` + sensors on I²C, SPI and UART | Renode | ✅ All 11 sensors, the seeded driver bugs and Sensirion's driver pass in the Docker image (`python3 -m unittest discover -s tests -t .`) |
 | Any chip by part number, Zephyr/CMake/PlatformIO projects | n/a | 🚧 PLANNED, see [ROADMAP.md](ROADMAP.md) |
 
 Everything not marked ✅ above has no run behind it in this repo. Every assumption, skipped item and mocked piece is in [docs/DECISIONS.md](docs/DECISIONS.md).

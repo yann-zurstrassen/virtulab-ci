@@ -7,8 +7,9 @@
 //   - pointer register selects one of four 16-bit registers, sent MSB first
 //   - temperature: 12-bit two's complement, left-justified, 0.0625 °C per LSB
 //   - the pointer persists across transactions
-// Not modelled: conversion modes, ALERT pin, and the configuration/limit
-// registers' reset values and behaviour (they are plain read/write storage).
+//   - power-up values: configuration 0x2210, T_LOW 0x8000, T_HIGH 0x7FF8
+// Not modelled: conversion modes, the ALERT pin, and what the configuration and
+// limit registers do (they are read/write storage with the datasheet's reset values).
 //
 // Usage in a peripherals .repl:   tmp108: VirtuLab.TMP108 @ i2c1 0x48
 // Set the reading from firmware:  vl_sim("sysbus.i2c1.tmp108 Temperature 21.5")
@@ -82,9 +83,9 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
             pointer = 0;
             byteIndex = 0;
             temperatureCounts = 0;
-            configuration = 0;
-            lowLimit = 0;
-            highLimit = 0;
+            configuration = 0x2210;  // Table 8
+            lowLimit = 0x8000;       // -128 degrees C
+            highLimit = 0x7FF8;      // +127.9375 degrees C
         }
 
         private ushort ReadRegister(int register)

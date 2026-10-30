@@ -202,33 +202,47 @@ def run_fuzz(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
 _FAULT_LINE = re.compile(r"FAULT status=(\w+) swept=(\d+) bypass=(\d+) crashed=(\d+)")
 
 
-def run_fault(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
+def _probes(cfg: ProjectConfig) -> list[str]:
+    probe = option(cfg, "fault", "probe")
+    return [probe] if isinstance(probe, str) else list(probe)
+
+
+def _sweep(cfg: ProjectConfig, root: Path, work: Path, probe: str, name: str) -> CheckOutcome:
     from .build import BuildConfig, build  # local: build pulls in the Arm toolchain
 
     board = BOARDS[cfg.board]
-    probe = option(cfg, "fault", "probe")
-    sources = [probe, *option(cfg, "fault", "sources")]
-    target = option(cfg, "fault", "target")
-    bcfg = BuildConfig(board=board, sources=sources,
+    bcfg = BuildConfig(board=board, sources=[probe, *option(cfg, "fault", "sources")],
                        include_dirs=list(option(cfg, "fault", "include")),
                        cflags=shlex.split(cfg.cflags), runtime=cfg.runtime)
-    result = build(root, bcfg, work / "fault" / "build", exclude=work)
+    result = build(root, bcfg, work / "fault" / name / "build", exclude=work)
     if not result.ok or result.elf is None:
-        return CheckOutcome("fault", FAIL, "the fault probe did not build", result.log)
-    cmd = [str(FAULT_SCRIPT), "--elf", str(result.elf), "--board", board.name, "--source", target]
+        return CheckOutcome("fault", FAIL, f"the fault probe {probe} did not build", result.log)
+    cmd = [str(FAULT_SCRIPT), "--elf", str(result.elf), "--board", board.name,
+           "--source", option(cfg, "fault", "target")]
     code, text = _run(cmd, root, 1800)
     m = _FAULT_LINE.search(text)
-    if not m:
-        verdict = next((l for l in text.splitlines() if l.startswith("VERDICT")), "")
-        return CheckOutcome("fault", FAIL, verdict or "the sweep did not finish", text)
+    verdict = next((l for l in text.splitlines() if l.startswith("VERDICT")), "")
+    if not m or m[1] == "inconclusive" or code not in (0, 1):
+        return CheckOutcome("fault", FAIL, f"{probe}: {verdict or 'the sweep did not finish'}", text)
     swept, bypass, crashed = int(m[2]), int(m[3]), int(m[4])
     data = {"swept": swept, "bypass": bypass, "crashed": crashed}
     if bypass:
-        return CheckOutcome("fault", FAIL,
-                            f"bypass reachable: {bypass} of {swept} single-instruction skips grant access",
-                            text, data)
-    return CheckOutcome("fault", PASS,
-                        f"no bypass in {swept} single-instruction skips (first execution only)", text, data)
+        return CheckOutcome("fault", FAIL, f"{probe}: bypass reachable: {bypass} of {swept} "
+                                           "single-instruction skips grant access", text, data)
+    return CheckOutcome("fault", PASS, f"{probe}: no bypass in {swept} skips", text, data)
+
+
+def run_fault(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
+    """Sweep once per probe. Each probe states one security property; all of them must hold."""
+    runs = [_sweep(cfg, root, work, p, Path(p).stem) for p in _probes(cfg)]
+    bad = [r for r in runs if r.failed]
+    data = {k: sum(r.data.get(k, 0) for r in runs) for k in ("swept", "bypass", "crashed")}
+    log = "\n".join(r.log for r in (bad or runs))
+    if bad:
+        return CheckOutcome("fault", FAIL, "; ".join(r.summary for r in bad), log, data)
+    return CheckOutcome("fault", PASS, f"no bypass in {data['swept']} single-instruction skips across "
+                                       f"{len(runs)} propert{'y' if len(runs) == 1 else 'ies'} "
+                                       "(first execution only)", log, data)
 
 
 RUNNERS = {"coverage": run_coverage, "fuzz": run_fuzz, "fault": run_fault}
@@ -265,6 +279,8 @@ def unit_checks(outcome: Outcome, cfg: ProjectConfig) -> list[CheckOutcome]:
         t = outcome.tests
         if not outcome.build.ok:
             checks.append(CheckOutcome("unit", FAIL, "the firmware did not build"))
+        elif outcome.status in (PASSED, BUDGET_EXCEEDED) and t.total - t.ignored == 0:
+            checks.append(CheckOutcome("unit", FAIL, "the firmware exited cleanly but ran no tests"))
         elif outcome.status in (PASSED, BUDGET_EXCEEDED):
             checks.append(CheckOutcome("unit", PASS, f"{t.passed}/{t.total} tests passed on {cfg.board}"))
         else:
@@ -272,7 +288,9 @@ def unit_checks(outcome: Outcome, cfg: ProjectConfig) -> list[CheckOutcome]:
             checks.append(CheckOutcome("unit", FAIL, f"{reason}: {t.passed}/{t.total} tests passed"))
     if "footprint" in cfg.tests:
         sizes = outcome.build.sizes
-        if outcome.baseline and sizes:
+        if outcome.budget_violations and not outcome.baseline:
+            checks.append(CheckOutcome("footprint", FAIL, outcome.budget_violations[0]))
+        elif outcome.baseline and sizes:
             summary = (f"Flash {sizes.flash:,} B ({fmt_delta(outcome.flash_delta)}), "
                        f"RAM {sizes.ram:,} B ({fmt_delta(outcome.ram_delta)})")
             if outcome.budget_violations:

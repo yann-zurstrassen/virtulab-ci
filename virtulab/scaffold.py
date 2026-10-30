@@ -85,12 +85,14 @@ def apply_defaults(cfg: ProjectConfig) -> None:
         cfg.tests["fuzz"].update({"harness": "fuzz/fuzz.c", "sources": ["src/parser.c", "src/crc.c"],
                                   "include": ["include"]})
     if "fault" in cfg.tests:
-        cfg.tests["fault"].update({"probe": "fault/probe.c", "sources": ["src/auth.c"],
+        cfg.tests["fault"].update({"probe": ["fault/probe.c", "fault/probe_count.c", "fault/probe_locked.c"], "sources": ["src/auth.c"],
                                    "target": "src/auth.c", "include": ["include"]})
 
 
 def scaffold(cfg: ProjectConfig, root: Path, force: bool = False) -> list[str]:
     """Write the sample firmware and align `cfg` (sources, flags, test options) with it."""
+    for m in cfg.modules.values():
+        catalog.get_module(m.model)  # an unknown model is a clear error, before anything is written
     features = _features(cfg)
     for m in cfg.modules.values():
         module = catalog.MODULES[m.model]

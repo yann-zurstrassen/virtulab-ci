@@ -19,6 +19,7 @@ class Hex(int):
     """An int that is written back as 0x.. (addresses stay readable)."""
 
 
+_ESCAPE = re.compile(r"\\([\\\"n])")
 _INT = re.compile(r"[-+]?\d+")
 _HEX = re.compile(r"[-+]?0[xX][0-9a-fA-F]+")
 _FLOAT = re.compile(r"[-+]?(\d+\.\d*|\.\d+)([eE][-+]?\d+)?")
@@ -33,7 +34,7 @@ def _scalar(text: str):
             raise YamlError(f"Unterminated string: {text}")
         body = text[1:-1]
         if text[0] == '"':
-            return body.replace('\\"', '"').replace("\\\\", "\\").replace("\\n", "\n")
+            return _ESCAPE.sub(lambda m: {"n": "\n"}.get(m[1], m[1]), body)
         return body.replace("''", "'")
     if text in ("true", "True", "TRUE"):
         return True

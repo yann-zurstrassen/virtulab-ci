@@ -11,7 +11,14 @@ WORKFLOW_PATH = {"github": ".github/workflows/virtulab.yml", "gitlab": ".gitlab-
 
 def github_workflow(cfg: ProjectConfig) -> str:
     branches = ", ".join(cfg.ci_branches)
-    fuzz = ("            fuzz/crashes\n" if "fuzz" in cfg.tests else "")
+    crashes = ("""
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: virtulab-crashes
+          path: fuzz/crashes
+          if-no-files-found: ignore
+""" if "fuzz" in cfg.tests else "")
     return f"""name: VirtuLab CI
 
 on:
@@ -21,9 +28,9 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write   # lets VirtuLab post its report as a PR comment
 
 jobs:
+  # Runs the pull request's code, so it gets a read-only token and keeps no credentials on disk.
   virtulab:
     name: Virtual board tests
     runs-on: ubuntu-latest
@@ -31,17 +38,39 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # the footprint check compares with the base branch
+          persist-credentials: false
 
       # Board, sensors and tests come from virtulab.yml.
       - uses: {ACTION}
+        with:
+          comment: false
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: virtulab-report
-          path: |
-            .virtulab/report.md
-{fuzz}          if-no-files-found: ignore
+          path: .virtulab/report.md
+          include-hidden-files: true   # upload-artifact skips dot folders by default
+          if-no-files-found: error
+{crashes}
+  # Holds the write token and never runs the pull request's code: it only posts the report.
+  report:
+    name: PR comment
+    needs: virtulab
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: virtulab-report
+      - name: Post the report
+        continue-on-error: true   # pull requests from forks get a read-only token
+        run: gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file report.md
+        env:
+          GH_TOKEN: ${{{{ github.token }}}}
+          PR: ${{{{ github.event.pull_request.number }}}}
 """
 
 

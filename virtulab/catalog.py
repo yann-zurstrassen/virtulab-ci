@@ -297,7 +297,8 @@ TESTS = {t.id: t for t in [
         "Skips one instruction at a time inside a function and reports any wrong-PIN style bypass.",
         "security", ("arm-none-eabi-gcc", "qemu", "arm-gdb"),
         options=(
-            Option("probe", "str", "fault/probe.c", "Probe: fails only if the bypass happens",
+            Option("probe", "list", ["fault/probe.c"],
+                   "Probes, one security property each: a probe fails only if that property breaks",
                    required=True),
             Option("sources", "list", ["src/auth.c"], "Code under attack (also built into the probe)"),
             Option("target", "str", "src/auth.c", "Source file whose instructions are skipped",

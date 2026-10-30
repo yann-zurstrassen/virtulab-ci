@@ -55,7 +55,7 @@ needs an emulator that can attach devices (the repository's Renode path does thi
 | Target | Emulator | Status in this work |
 | :--- | :--- | :--- |
 | `lm3s6965evb` | QEMU | Runs here. Assessed above |
-| `stm32f4_discovery` (+ TMP108 on I2C) | Renode | `examples/thermostat`. 🚧 **Not verified here**: Renode is not installed on the machine this was written on, so its peripheral status is not assessed |
+| `stm32f4_discovery` (+ sensors) | Renode | Runs in the Docker image, where the sensor suite passes. Its peripheral fidelity is not assessed block by block |
 | `lm3s811evb`, `stm32vldiscovery`, `netduinoplus2`, `microbit`, `mps2-*` | QEMU | Listed by the engine and covered by its end-to-end tests in CI. 🚧 **Not assessed** for fidelity here |
 
 ## Sensor models in the VirtuLab device library
@@ -76,8 +76,9 @@ The exact statements each model implements, and where, are in [DATASHEETS.md](DA
 | `VirtuLab.ATModem` | UART | ITU-T V.250 and 3GPP TS 27.007 | No, and it is a generic modem |
 | `VirtuLab.ModbusRtuSlave` | UART | Modbus over serial line, application protocol V1.1b3 | No, and the register layout is typical, not a product's |
 
-The datasheet details above were written from memory of the documents and have not been checked line by line against
-the current revisions. Treat a row as a claim to verify, which is what the map makes easy.
+Every row of the map cites a document, revision and page, and the problems found are in
+[DATASHEET_ISSUES.md](DATASHEET_ISSUES.md). The ADXL345 is cited to Rev. 0, the only revision obtained. NMEA 0183 is a paid
+standard, so the GPS rows cite u-blox's protocol manual and the GPSD project's public description of it.
 
 "Datasheet model" in the catalog means written from the document and exercised by the sample firmware's
 tests. It does not mean verified against silicon. What each model leaves out is listed in its source file and in
@@ -121,7 +122,7 @@ These hold for emulators in general and for this setup in particular. None of th
 | **Clock tree and power** | The system controller reports a fixed 12.5 MHz SYSCLK. PLL lock, brown-out, sleep modes and wake-up times are not realistic | Clock-dependent peripherals (baud rates, ADC sample rates) and low-power paths need hardware |
 | **DMA contention** | No DMA controller in this machine | Bus contention and DMA/CPU races are invisible |
 | **Peripheral errata and analog behaviour** | Models follow the documented register interface, not silicon errata, noise, or electrical limits | Sensor drift, ADC noise, signal integrity and EMC are out of scope |
-| **Fault injection** | The skip sweep removes one instruction in software. A physical glitch can flip bits, corrupt multiple instructions, or hit the pipeline differently | A clean sweep is evidence, not proof. See below |
+| **Fault injection** | Results belong to one build: the same source gave different results under different compiler flags, so sweep the flags you ship. The skip sweep removes one instruction in software. A physical glitch can flip bits, corrupt multiple instructions, or hit the pipeline differently | A clean sweep is evidence, not proof. See below |
 | **Fuzzing** | `make fuzz` runs the parser on the host with sanitizers. Host word size, alignment and libc differ from the target | It finds logic and memory bugs in the parser code, not target-specific ones |
 
 ## Validate on real hardware

@@ -3,9 +3,21 @@
 *.bin
 *.hex
 *.o
+*.map
 *.log
-qemu_output.log
 
-# Metrics & Temp files
-current_memory.json
+# VirtuLab work directory (builds, baseline checkout, report.md)
+.virtulab/
 
+# Python
+__pycache__/
+
+# Demo checks: native builds, gcov data, CI report fragments
+build/
+.ci/
+*.gcov
+*.gcda
+*.gcno
+
+# Unreported third-party findings: stay out of git until the maintainers have them
+.private/

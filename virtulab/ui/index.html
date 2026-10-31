@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VirtuLab Setup</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5b6573; --line: #d8dde4;
+    --accent: #2457d6; --accent-text: #ffffff; --ok: #1a7f37; --warn: #9a6700; --bad: #c62828;
+    --chip: #eef1f6; --code-bg: #0f1722; --code-text: #d7e0ee; --sel: #e8efff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f141a; --panel: #171d25; --text: #e6eaf0; --muted: #98a3b3; --line: #2b3441;
+      --accent: #6d97ff; --accent-text: #0b1220; --ok: #4cc26b; --warn: #e3b341; --bad: #ff7b72;
+      --chip: #212a36; --code-bg: #0a0e14; --code-text: #d7e0ee; --sel: #1b2740;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 20px 24px 8px; max-width: 1280px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { max-width: 1280px; margin: 0 auto; padding: 8px 24px 48px; display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; padding: 8px 16px 48px; } header { padding: 16px; } }
+  section.step, aside .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 16px; }
+  aside { position: sticky; top: 12px; }
+  @media (max-width: 960px) { aside { position: static; } }
+  h2 { margin: 0 0 2px; font-size: 16px; display: flex; gap: 8px; align-items: center; }
+  h2 .n { background: var(--accent); color: var(--accent-text); width: 24px; height: 24px; border-radius: 50%;
+    display: inline-grid; place-items: center; font-size: 13px; }
+  .hint { color: var(--muted); margin: 0 0 12px; font-size: 13.5px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel);
+    text-align: left; font: inherit; color: inherit; cursor: pointer; display: block; width: 100%; }
+  .card:hover { border-color: var(--accent); }
+  .card[aria-pressed="true"], .card.on { border-color: var(--accent); background: var(--sel);
+    box-shadow: 0 0 0 1px var(--accent) inset; }
+  .card[disabled], .card.off { opacity: .5; cursor: not-allowed; }
+  .card b { display: block; }
+  .card small { color: var(--muted); display: block; }
+  .badge { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--chip);
+    color: var(--muted); margin: 4px 4px 0 0; }
+  .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); }
+  .protos { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--chip);
+    font: inherit; color: inherit; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 0;
+    border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  label { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  input[type=text], input[type=number], select { font: inherit; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; min-width: 0; }
+  input[type=text]:focus, select:focus, input[type=number]:focus, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.btn { font: inherit; border-radius: 8px; border: 1px solid var(--line); padding: 7px 14px;
+    background: var(--panel); color: var(--text); cursor: pointer; }
+  button.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  .test { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .test.on { border-color: var(--accent); background: var(--sel); }
+  .test header { padding: 0; max-width: none; display: flex; gap: 10px; align-items: flex-start; }
+  .test header input { margin-top: 5px; transform: scale(1.2); }
+  .test .opts { margin: 8px 0 0 28px; display: grid; gap: 6px; }
+  .test .opts label { justify-content: space-between; width: 100%; }
+  .test .opts input[type=text], .test .opts input[type=number] { flex: 1; max-width: 62%; }
+  .limits { color: var(--muted); font-size: 12.5px; margin: 2px 0 0; }
+  .check { display: flex; gap: 8px; padding: 4px 0; font-size: 14px; }
+  .check .i { width: 20px; flex: none; }
+  .check.error .m { color: var(--bad); } .check.warn .m { color: var(--warn); }
+  pre { background: var(--code-bg); color: var(--code-text); padding: 12px; border-radius: 8px; overflow: auto;
+    font: 12.5px/1.45 ui-monospace, Menlo, Consolas, monospace; margin: 0; max-height: 340px; white-space: pre; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .tabs button { border: 0; background: none; color: var(--muted); font: inherit; padding: 4px 10px;
+    border-radius: 6px; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--chip); color: var(--text); font-weight: 600; }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { fill: var(--text); font: 12px system-ui, sans-serif; }
+  svg .muted { fill: var(--muted); }
+  svg rect.chip { fill: var(--chip); stroke: var(--line); }
+  svg rect.mod { fill: var(--sel); stroke: var(--accent); }
+  svg line { stroke: var(--muted); stroke-width: 1.5; }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text);
+    color: var(--bg); padding: 8px 16px; border-radius: 8px; display: none; z-index: 5; }
+  #report { white-space: pre-wrap; }
+  .status { font-weight: 600; }
+  .status.pass { color: var(--ok); } .status.fail { color: var(--bad); }
+  .sr { position: absolute; left: -9999px; }
+  .cardwrap { display: flex; flex-direction: column; gap: 4px; }
+  .cardwrap .card { flex: 1; }
+  button.link { background: none; border: 0; padding: 0 2px; font: inherit; font-size: 13px; color: var(--accent);
+    cursor: pointer; text-align: left; text-decoration: underline; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text);
+    padding: 0; width: min(1100px, 96vw); max-height: 92vh; }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  dialog .dhead { display: flex; justify-content: space-between; gap: 12px; padding: 16px 20px 8px; }
+  dialog .dhead h2 { font-size: 18px; margin: 0; }
+  dialog .dbody { padding: 0 20px 20px; overflow: auto; max-height: calc(92vh - 90px); }
+  dialog table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  dialog th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--panel); }
+  dialog td { vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
+  dialog td.says b { display: block; }
+  dialog td.says small { color: var(--muted); display: block; margin-top: 2px; }
+  .st { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--chip); white-space: nowrap; }
+  .st.modelled { color: var(--ok); } .st.simplified, .st.unchecked { color: var(--warn); }
+  .st.not-modelled { color: var(--bad); }
+  .places { display: flex; flex-wrap: wrap; gap: 4px; }
+  .place { font: 12px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--chip); color: var(--text); padding: 2px 6px; cursor: pointer; }
+  .place[aria-expanded="true"] { border-color: var(--accent); background: var(--sel); }
+  .place.missing { color: var(--bad); cursor: default; }
+  .snippet { margin-top: 6px; }
+  .snippet .meta { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); margin-bottom: 2px; }
+  .snippet pre { max-height: 260px; }
+  .snippet .hl { background: rgba(109, 151, 255, .28); display: inline-block; width: 100%; }
+  .summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VirtuLab setup</h1>
+  <p>Pick a board, attach sensors, choose tests. VirtuLab writes <code>virtulab.yml</code> and the CI file, then runs everything on a virtual board.</p>
+  <p id="where" class="hint"></p>
+</header>
+<main>
+  <div>
+    <section class="step" aria-labelledby="s1">
+      <h2 id="s1"><span class="n">1</span> Board</h2>
+      <p class="hint">The virtual board your firmware runs on. Boards on Renode can carry sensors; QEMU boards run the CPU only.</p>
+      <div class="grid" id="boards" role="group" aria-label="Boards"></div>
+    </section>
+
+    <section class="step" aria-labelledby="s2">
+      <h2 id="s2"><span class="n">2</span> Protocols and sensors</h2>
+      <p class="hint" id="proto-hint"></p>
+      <div class="protos" id="protos" role="group" aria-label="Filter sensors by protocol"></div>
+      <div class="grid" id="sensors"></div>
+      <div id="attached" style="margin-top:12px"></div>
+    </section>
+
+    <section class="step" aria-labelledby="s3">
+      <h2 id="s3"><span class="n">3</span> Tests</h2>
+      <p class="hint">Everything you tick runs on each push and shows up in one report. Options are optional.</p>
+      <div id="tests"></div>
+    </section>
+
+    <section class="step" aria-labelledby="s4">
+      <h2 id="s4"><span class="n">4</span> CI and project</h2>
+      <div class="row">
+        <label>CI provider
+          <select id="provider"><option value="github">GitHub Actions</option>
+            <option value="gitlab">GitLab CI</option></select></label>
+        <label>Branches <input type="text" id="branches" value="main" size="14"></label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="sample" checked> Create sample firmware that matches this setup (so the first run passes)</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="force"> Overwrite existing files</label>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="create">Create project files</button>
+        <button class="btn" id="run" disabled>Run the selected tests now</button>
+      </div>
+      <p class="hint" id="created"></p>
+    </section>
+
+    <section class="step" id="results" hidden aria-labelledby="s5">
+      <h2 id="s5">Run <span class="status" id="runstatus" role="status"></span></h2>
+      <pre id="output" aria-live="polite"></pre>
+      <h2 style="margin-top:14px">Report</h2>
+      <pre id="report"></pre>
+    </section>
+  </div>
+
+  <aside>
+    <div class="box">
+      <h2>Your virtual board</h2>
+      <div id="diagram"></div>
+    </div>
+    <div class="box">
+      <h2>Board check</h2>
+      <div id="checks" aria-live="polite"></div>
+    </div>
+    <div class="box">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="yaml">virtulab.yml</button>
+        <button role="tab" aria-selected="false" data-tab="ci">CI file</button>
+        <button role="tab" aria-selected="false" data-tab="cli">Command line</button>
+      </div>
+      <pre id="preview"></pre>
+    </div>
+  </aside>
+</main>
+<dialog id="datasheet" aria-labelledby="ds-title">
+  <div class="dhead"><div><h2 id="ds-title"></h2><div class="hint" id="ds-sub" style="margin:2px 0 0"></div></div>
+    <button class="btn" id="ds-close" autofocus aria-label="Close datasheet map">Close</button></div>
+  <div class="dbody"><div class="summary" id="ds-summary"></div><div id="ds-table"></div></div>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+const token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
+const $ = (id) => document.getElementById(id);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (v === true) n.setAttribute(k, ""); else if (v !== false && v != null) n.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) n.append(kid instanceof Node ? kid : document.createTextNode(kid));
+  return n;
+};
+async function api(path, body) {
+  const res = await fetch(path, { method: body ? "POST" : "GET",
+    headers: { "X-VirtuLab-Token": token, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", 4000); }
+
+let catalog, state = { board: "lm3s6965evb", modules: {}, tests: {}, filter: null, extra: {} };
+const hex = (n) => "0x" + n.toString(16).toUpperCase().padStart(2, "0");
+const board = () => catalog.boards.find(b => b.id === state.board);
+const kib = (n) => n >= 1048576 ? (n / 1048576) + " MiB" : (n / 1024) + " KiB";
+
+function config() {
+  const modules = {};
+  for (const [name, m] of Object.entries(state.modules))
+    modules[name] = { model: m.model, bus: m.bus, ...(m.address != null ? { address: m.address } : {}),
+      ...(m.cs ? { cs: m.cs } : {}) };
+  const tests = {};
+  for (const [id, opts] of Object.entries(state.tests)) tests[id] = { ...opts };
+  return { ...state.extra, version: 1, board: state.board, modules, tests,
+    ci: { provider: $("provider").value, branches: $("branches").value.split(/[\s,]+/).filter(Boolean) } };
+}
+
+/* ---------- step 1: boards ---------- */
+function renderBoards() {
+  const box = $("boards"); box.replaceChildren();
+  const ordered = [...catalog.boards].sort((a, b) => Object.keys(b.buses).length - Object.keys(a.buses).length);
+  for (const b of ordered) {
+    box.append(el("button", { class: "card", "aria-pressed": String(b.id === state.board),
+      onclick: () => selectBoard(b.id) },
+      el("b", {}, b.id), el("small", {}, `${b.cpu} · ${b.title}`),
+      el("small", {}, `${kib(b.flash)} flash · ${kib(b.ram)} RAM`),
+      el("span", { class: "badge " + (b.buses && Object.keys(b.buses).length ? "ok" : "") },
+        Object.keys(b.buses).length ? "sensors supported" : "CPU only"),
+      el("span", { class: "badge" }, b.emulator)));
+  }
+}
+function selectBoard(id) {
+  state.board = id;
+  const buses = board().buses;
+  for (const [name, m] of Object.entries(state.modules)) if (!(m.bus in buses)) delete state.modules[name];
+  for (const t of catalog.tests) if (t.qemu_only && board().emulator !== "qemu") delete state.tests[t.id];
+  renderAll();
+}
+
+/* ---------- step 2: protocols + sensors ---------- */
+function renderSensors() {
+  const b = board(), buses = b.buses, protos = $("protos"); protos.replaceChildren();
+  $("proto-hint").textContent = Object.keys(buses).length
+    ? `${b.id} offers ${b.protocols.map(p => p.toUpperCase()).join(", ")}. Choose a protocol to filter sensors, then add one.`
+    : `${b.id} runs on QEMU, which cannot attach sensors. Pick stm32f4_discovery to use them.`;
+  for (const p of catalog.protocols) {
+    const count = Object.values(buses).filter(k => k === p.id).length;
+    protos.append(el("button", { class: "chip", "aria-pressed": String(state.filter === p.id),
+      title: p.summary, disabled: !count,
+      onclick: () => { state.filter = state.filter === p.id ? null : p.id; renderSensors(); } },
+      `${p.title} · ${count} bus${count === 1 ? "" : "es"}`));
+  }
+  const grid = $("sensors"); grid.replaceChildren();
+  for (const m of catalog.modules) {
+    if (state.filter && m.protocol !== state.filter) continue;
+    const usable = Object.values(buses).includes(m.protocol);
+    const ds = m.datasheet, parts = ds ? Object.values(ds.statuses).reduce((a, b) => a + b, 0) : 0;
+    grid.append(el("div", { class: "cardwrap" },
+      el("button", { class: "card" + (usable ? "" : " off"), disabled: !usable, onclick: () => addModule(m) },
+        el("b", {}, m.title), el("small", {}, m.summary),
+        el("span", { class: "badge " + (m.tier === "accurate" ? "ok" : "warn") },
+          m.tier === "accurate" ? "datasheet model" : "built-in model"),
+        el("span", { class: "badge" }, m.protocol.toUpperCase()),
+        m.gaps ? el("small", {}, "Not modelled: " + m.gaps) : ""),
+      ds ? el("button", { class: "link", onclick: () => openDatasheet(m.id) },
+        `Datasheet map · ${ds.statuses.modelled || 0} of ${parts} modelled` +
+        (ds.unverified ? ` · ${ds.unverified} unverified` : " · all cited") +
+        (ds.issues ? ` · ${ds.issues} datasheet issue${ds.issues === 1 ? "" : "s"}` : "")) : ""));
+  }
+  const list = $("attached"); list.replaceChildren();
+  const names = Object.keys(state.modules);
+  if (names.length) list.append(el("div", { class: "hint" }, "Attached to the board:"));
+  for (const name of names) {
+    const m = state.modules[name], mod = catalog.modules.find(x => x.id === m.model);
+    const busSel = el("select", { "aria-label": `Bus of ${name}`, onchange: (e) => { m.bus = e.target.value; refresh(); } },
+      Object.entries(buses).filter(([, k]) => k === mod.protocol).map(([bus]) =>
+        el("option", { value: bus, selected: bus === m.bus }, bus)));
+    const row = el("div", { class: "row" },
+      el("b", {}, mod.title),
+      el("label", {}, "name", el("input", { type: "text", value: name, size: 8, "aria-label": "Module name",
+        onchange: (e) => renameModule(name, e.target.value) })),
+      el("label", {}, "bus", busSel));
+    if (mod.default_address != null) {
+      const addrSel = el("select", { "aria-label": `Address of ${name}`,
+        onchange: (e) => { m.address = parseInt(e.target.value); refresh(); } },
+        (mod.addresses.length ? mod.addresses : [mod.default_address]).map(a =>
+          el("option", { value: a, selected: a === m.address }, hex(a))));
+      row.append(el("label", {}, "address", addrSel));
+    }
+    if (mod.default_cs) {
+      row.append(el("label", {}, "chip select", el("input", { type: "text", size: 5, value: m.cs || mod.default_cs,
+        "aria-label": `Chip-select pin of ${name}`, onchange: (e) => { m.cs = e.target.value.trim().toUpperCase(); refresh(); } })));
+    }
+    if (mod.datasheet) row.append(el("button", { class: "link", onclick: () => openDatasheet(mod.id) }, "Datasheet map"));
+    row.append(el("button", { class: "btn", onclick: () => { delete state.modules[name]; renderAll(); } }, "Remove"));
+    list.append(row);
+  }
+}
+function addModule(mod) {
+  const buses = board().buses;
+  const bus = Object.entries(buses).find(([, k]) => k === mod.protocol)?.[0];
+  if (!bus) return;
+  let base = mod.kind.replace(/[^a-z0-9_]/g, "_"), name = base, i = 2;
+  while (state.modules[name]) name = base + i++;
+  const used = new Set(Object.values(state.modules).filter(m => m.bus === bus).map(m => m.address));
+  const address = mod.addresses.find(a => !used.has(a)) ?? mod.default_address;
+  state.modules[name] = { model: mod.id, bus, address };
+  renderAll();
+}
+function renameModule(old, next) {
+  next = next.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_]*$/.test(next) || (next !== old && state.modules[next])) {
+    toast("Names use lowercase letters, digits and _, and must be unique."); return renderSensors(); }
+  const out = {}; for (const [k, v] of Object.entries(state.modules)) out[k === old ? next : k] = v;
+  state.modules = out; refresh();
+}
+
+/* ---------- datasheet map ---------- */
+const STATUS = { modelled: "Modelled", simplified: "Simplified", "not-modelled": "Not modelled",
+  unchecked: "Not checked by VirtuLab" };
+async function openDatasheet(id) {
+  let data;
+  try { data = await api("/api/datasheet?module=" + encodeURIComponent(id)); } catch (e) { return toast(e.message); }
+  $("ds-title").textContent = data.title;
+  const sub = $("ds-sub"); sub.replaceChildren();
+  if (data.product_page) sub.append(el("a", { href: data.product_page, target: "_blank", rel: "noopener noreferrer" }, "Manufacturer page"), " · ");
+  sub.append("Interface: " + (data.interface || ""));
+  if (data.documents.length) {
+    sub.append(el("div", { style: "margin-top:4px" }, "Read: ", ...data.documents.flatMap((d, i) => [
+      i ? "; " : "", el("b", {}, d.id), " ",
+      d.url ? el("a", { href: d.url, target: "_blank", rel: "noopener noreferrer" }, d.title) : d.title,
+      ` (${d.revision || "revision unknown"}, retrieved ${d.retrieved || "?"})`])));
+  } else {
+    sub.append(el("div", { style: "margin-top:4px;color:var(--bad)" }, "No document has been read for this sensor yet: every row is unverified."));
+  }
+  const counts = {}; for (const r of data.rows) counts[r.status] = (counts[r.status] || 0) + 1;
+  $("ds-summary").replaceChildren(...Object.entries(STATUS).filter(([k]) => counts[k]).map(([k, v]) =>
+    el("span", { class: "st " + k }, `${counts[k]} ${v.toLowerCase()}`)));
+  const unverified = data.rows.filter(r => r.unverified).length, issues = data.rows.filter(r => r.issue).length;
+  if (unverified) $("ds-summary").append(el("span", { class: "st not-modelled" }, `${unverified} unverified (no citation)`));
+  if (issues) $("ds-summary").append(el("span", { class: "st unchecked" }, `${issues} datasheet issue${issues === 1 ? "" : "s"}`));
+  const rows = data.rows.map(r => {
+    const places = el("div", { class: "places" });
+    const snippet = el("div", { class: "snippet" });
+    for (const [kind, label] of [["model", "model"], ["driver", "driver"], ["test", "test"]]) {
+      const p = r[kind]; if (!p) continue;
+      const b = el("button", { class: "place" + (p.line ? "" : " missing"), "aria-expanded": "false",
+        title: p.path, disabled: !p.line,
+        onclick: async () => {
+          const open = b.getAttribute("aria-expanded") === "true";
+          places.querySelectorAll(".place").forEach(x => x.setAttribute("aria-expanded", "false"));
+          snippet.replaceChildren();
+          if (open) return;
+          try {
+            const w = await api(`/api/source?module=${encodeURIComponent(id)}&path=${encodeURIComponent(p.path)}&line=${p.line}`);
+            const code = el("pre", {});
+            w.text.split("\n").forEach((line, i) => {
+              const n = w.start + i;
+              code.append(el("span", { class: n === w.highlight ? "hl" : "" }, String(n).padStart(4) + "  " + line + "\n"));
+            });
+            snippet.append(el("div", { class: "meta" }, `${w.path}:${w.highlight}`), code);
+            b.setAttribute("aria-expanded", "true");
+          } catch (e) { toast(e.message); }
+        } }, p.line ? `${label} · ${p.path.split("/").pop()}:${p.line}` : `${label} · not found`);
+      places.append(b);
+    }
+    return el("tr", {},
+      el("td", { class: "says" }, el("b", {}, r.topic), r.datasheet, r.note ? el("small", {}, r.note) : "",
+        r.issue ? el("small", { style: "color:var(--warn)" }, "⚠ Datasheet issue: " + r.issue) : ""),
+      el("td", {}, r.unverified ? el("span", { class: "st not-modelled" }, "unverified")
+        : el("small", {}, r.source + (r.corroborated_by ? "; also " + r.corroborated_by.join(", ") : ""))),
+      el("td", {}, el("span", { class: "st " + r.status }, STATUS[r.status])),
+      el("td", {}, places.children.length ? places : el("small", { class: "hint" }, "—"), snippet));
+  });
+  $("ds-table").replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "The datasheet says"), el("th", {}, "Source"), el("th", {}, "Status"), el("th", {}, "Where in the code"))),
+    el("tbody", {}, rows)));
+  const dlg = $("datasheet"); if (!dlg.open) dlg.showModal();
+}
+$("ds-close").addEventListener("click", () => $("datasheet").close());
+$("datasheet").addEventListener("click", (e) => { if (e.target === $("datasheet")) $("datasheet").close(); });
+
+/* ---------- step 3: tests ---------- */
+function renderTests() {
+  const box = $("tests"); box.replaceChildren();
+  for (const t of catalog.tests) {
+    const blocked = t.qemu_only && board().emulator !== "qemu";
+    const on = t.id in state.tests;
+    const cb = el("input", { type: "checkbox", id: "t-" + t.id, checked: on && !blocked, disabled: blocked,
+      onchange: (e) => { if (e.target.checked) state.tests[t.id] = {}; else delete state.tests[t.id]; renderTests(); refresh(); } });
+    const card = el("div", { class: "test" + (on ? " on" : "") },
+      el("header", {}, cb, el("div", {},
+        el("label", { for: "t-" + t.id, style: "color:var(--text);font-size:15px;font-weight:600" }, t.title),
+        el("span", { class: "badge" }, t.stage),
+        el("div", { class: "hint", style: "margin:0" }, t.summary),
+        blocked ? el("div", { class: "limits" }, "Needs a QEMU board (not available on " + state.board + ").") : "",
+        t.limits ? el("div", { class: "limits" }, "Limits: " + t.limits) : "")));
+    if (on && t.options.length) {
+      const opts = el("div", { class: "opts" });
+      for (const o of t.options) {
+        const cur = state.tests[t.id][o.name] ?? o.default;
+        const show = Array.isArray(cur) ? cur.join(", ") : cur;
+        const input = el("input", { type: o.kind === "int" || o.kind === "percent" ? "number" : "text",
+          value: show, placeholder: String(o.default), "aria-label": o.help,
+          onchange: (e) => setOption(t, o, e.target.value) });
+        opts.append(el("label", { title: o.help }, o.name, input));
+      }
+      card.append(opts);
+    }
+    box.append(card);
+  }
+}
+function setOption(t, o, raw) {
+  let v = raw;
+  if (o.kind === "list") v = raw.split(/[\s,]+/).filter(Boolean);
+  else if (o.kind === "int" || o.kind === "percent") v = Number(raw);
+  state.tests[t.id][o.name] = v; refresh();
+}
+
+/* ---------- right column ---------- */
+let lastPreview = null, tab = "yaml";
+function drawDiagram() {
+  const mods = Object.entries(state.modules), b = board();
+  const h = Math.max(120, 50 + mods.length * 58), W = 420;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const s = document.createElementNS(svgNS, "svg"); s.setAttribute("viewBox", `0 0 ${W} ${h}`);
+  s.setAttribute("role", "img"); s.setAttribute("aria-label", `${b.id} with ${mods.length} attached modules`);
+  const add = (tag, attrs, text) => { const n = document.createElementNS(svgNS, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text) n.textContent = text; s.append(n); return n; };
+  add("rect", { class: "chip", x: 12, y: 12, width: 150, height: h - 24, rx: 10 });
+  add("text", { x: 24, y: 36, "font-weight": 600 }, b.id);
+  add("text", { class: "muted", x: 24, y: 54 }, b.cpu + " · " + b.emulator);
+  add("text", { class: "muted", x: 24, y: 72 }, kib(b.flash) + " / " + kib(b.ram));
+  if (!mods.length) add("text", { class: "muted", x: 190, y: h / 2 + 4 }, b.buses && Object.keys(b.buses).length ? "No sensors attached yet" : "CPU only");
+  mods.forEach(([name, m], i) => {
+    const y = 40 + i * 58, mod = catalog.modules.find(x => x.id === m.model);
+    add("line", { x1: 162, y1: y + 18, x2: 238, y2: y + 18 });
+    add("text", { class: "muted", x: 168, y: y + 12 }, m.bus + (m.address != null ? " " + hex(m.address) : ""));
+    add("rect", { class: "mod", x: 238, y: y - 6, width: 168, height: 48, rx: 8 });
+    add("text", { x: 248, y: y + 12, "font-weight": 600 }, name);
+    add("text", { class: "muted", x: 248, y: y + 30 }, mod.title.length > 26 ? mod.id : mod.title);
+  });
+  $("diagram").replaceChildren(s);
+}
+function drawChecks(res) {
+  const box = $("checks"); box.replaceChildren();
+  const icon = { ok: "✅", warn: "⚠️", error: "❌" };
+  for (const f of res.findings)
+    box.append(el("div", { class: "check " + f.level }, el("span", { class: "i" }, icon[f.level]),
+      el("span", { class: "m" }, el("b", {}, f.subject + " "), f.message)));
+  $("run").disabled = !res.ok;
+}
+function drawPreview() {
+  if (!lastPreview) return;
+  const p = lastPreview;
+  $("preview").textContent = tab === "yaml" ? p.yaml : tab === "ci" ? `# ${p.ci_path}\n${p.ci}` :
+    `pipx install virtulab        # or: pip install virtulab\nvirtulab check\nvirtulab run\n\n# Docker only:\n${p.docker}\n`;
+}
+let timer;
+function refresh() {
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    drawDiagram();
+    const body = { config: config(), sample: $("sample").checked };
+    try {
+      const [res, prev] = await Promise.all([api("/api/check", body), api("/api/preview", body)]);
+      drawChecks(res); lastPreview = prev; drawPreview();
+    } catch (e) {
+      $("checks").replaceChildren(el("div", { class: "check error" }, el("span", { class: "i" }, "❌"), el("span", { class: "m" }, e.message)));
+      $("run").disabled = true;
+    }
+  }, 120);
+}
+function renderAll() { renderBoards(); renderSensors(); renderTests(); refresh(); }
+
+/* ---------- actions ---------- */
+$("create").addEventListener("click", async () => {
+  try {
+    const out = await api("/api/save", { config: config(), sample: $("sample").checked,
+      force: $("force").checked, write_ci: true });
+    $("created").textContent = "Wrote: " + out.written.join(", ");
+    toast("Project files created"); $("run").disabled = false;
+  } catch (e) { toast(e.message); $("created").textContent = e.message; }
+});
+$("run").addEventListener("click", async () => {
+  try { await api("/api/run", {}); } catch (e) { return toast(e.message); }
+  $("results").hidden = false; $("results").scrollIntoView({ behavior: "smooth" });
+  const poll = async () => {
+    const s = await api("/api/run");
+    $("output").textContent = s.output || "Starting…";
+    $("output").scrollTop = $("output").scrollHeight;
+    const st = $("runstatus");
+    if (s.state === "running") { st.textContent = "running…"; st.className = "status"; return setTimeout(poll, 700); }
+    st.textContent = s.exit_code === 0 ? "passed" : "failed (exit " + s.exit_code + ")";
+    st.className = "status " + (s.exit_code === 0 ? "pass" : "fail");
+    $("report").textContent = s.report || "";
+  };
+  poll();
+});
+for (const id of ["provider", "branches", "sample"]) $(id).addEventListener("input", refresh);
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+  tab = b.dataset.tab; document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+  drawPreview(); }));
+
+(async function init() {
+  try {
+    [catalog] = await Promise.all([api("/api/catalog")]);
+    const proj = await api("/api/project");
+    $("where").textContent = "Project folder: " + proj.root;
+    for (const t of catalog.tests) if (t.default) state.tests[t.id] = {};
+    if (proj.config) {
+      const c = proj.config; state.extra = { build: c.build, timeout: c.timeout }; state.board = c.board; state.modules = {}; state.tests = {};
+      for (const [n, m] of Object.entries(c.modules || {})) state.modules[n] = { ...m };
+      for (const [n, o] of Object.entries(c.tests || {})) state.tests[n] = { ...o };
+      $("provider").value = c.ci?.provider || "github"; $("branches").value = (c.ci?.branches || ["main"]).join(", ");
+      $("sample").checked = false; $("force").checked = true;
+      $("created").textContent = "Editing the existing virtulab.yml. Create writes it back.";
+    } else {
+      state.board = "stm32f4_discovery";
+    }
+    renderAll();
+    const wanted = new URLSearchParams(location.hash.slice(1)).get("datasheet");  // #token=..&datasheet=adxl345
+    if (wanted) openDatasheet(wanted);
+  } catch (e) {
+    document.body.prepend(el("p", { style: "padding:16px;color:var(--bad)" },
+      "Cannot reach VirtuLab: " + e.message + ". Open the URL printed by `virtulab ui`, including the #token part."));
+  }
+})();
+</script>
+</body>
+</html>

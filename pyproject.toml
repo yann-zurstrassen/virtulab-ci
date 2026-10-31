@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "virtulab"
+description = "Security and safety evidence for firmware on every pull request, on an emulated board"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dependencies = []
+dynamic = ["version"]
+
+[project.scripts]
+virtulab = "virtulab.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "virtulab.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["virtulab*"]
+
+[tool.setuptools.package-data]
+virtulab = ["runtime/**/*", "templates/**/*", "devices/*.cs", "datasheets/*.yml", "ui/*.html"]

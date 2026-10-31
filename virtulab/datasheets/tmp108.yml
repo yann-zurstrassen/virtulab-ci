@@ -1,0 +1,76 @@
+# Where the TMP108 datasheet is implemented. Paths are relative to virtulab/; "#text" is a
+# literal piece of the file (the line number is looked up). Keep statements short and exact.
+part: "TMP108"
+manufacturer: "Texas Instruments"
+title: "TI TMP108 digital temperature sensor"
+product_page: "https://www.ti.com/product/TMP108"
+interface: "I²C, 7-bit address 0x48 to 0x4B"
+documents:
+  - id: "tmp108-ds"
+    title: "TI TMP108 datasheet"
+    revision: "Rev. A"
+    kind: "datasheet"
+    url: "https://www.ti.com/lit/ds/symlink/tmp108.pdf"
+    retrieved: "2026-10-30"
+    sha256: "ec086250fc4331e7fc923be62173062bbf0fccedad6894c2741b73cd1c084556"
+rows:
+  - topic: "I²C address"
+    datasheet: "The ADD0 pin selects one of four addresses: 0x48, 0x49, 0x4A, 0x4B."
+    source: "tmp108-ds §7.3, Table 2, p. 9"
+    status: modelled
+    model: "catalog.py#addresses=(0x48, 0x49, 0x4A, 0x4B)"
+    driver: "templates/starter/tmp108/include/tmp108.h#TMP108_DEFAULT_ADDR"
+  - topic: "Pointer register"
+    datasheet: "A write of one byte selects the register that later reads return: 0 temperature, 1 configuration, 2 T_LOW, 3 T_HIGH. The pointer stays selected between transactions."
+    source: "tmp108-ds §7.5.1, p. 12"
+    status: modelled
+    model: "devices/TMP108.cs#pointer = data[0] & 0x3"
+    driver: "templates/starter/i2c/src/i2c.c#i2c1_read_reg(uint8_t addr7"
+    test: "templates/starter/tmp108/test/test_thermostat.c#test_reads_room_temperature"
+  - topic: "Temperature register format"
+    datasheet: "16-bit register, sent most significant byte first. The temperature is 12 bits in two's complement, left-justified (the low 4 bits are zero), 0.0625 °C per count."
+    source: "tmp108-ds §7.5.2, p. 12"
+    status: modelled
+    model: "devices/TMP108.cs#temperatureCounts << 4"
+    driver: "templates/starter/tmp108/src/tmp108.c#12-bit two's complement, left-justified"
+    test: "templates/starter/tmp108/test/test_thermostat.c#test_reads_negative_temperature"
+  - topic: "Resolution"
+    datasheet: "One count is 0.0625 °C."
+    source: "tmp108-ds §7.5.2, p. 13"
+    status: modelled
+    model: "devices/TMP108.cs#private const decimal Resolution = 0.0625m;"
+    driver: "templates/starter/tmp108/src/tmp108.c#* 625 / 10"
+    test: "templates/starter/tmp108/test/test_thermostat.c#test_reads_room_temperature"
+  - topic: "Operating range"
+    datasheet: "Specified from −40 °C to +125 °C."
+    source: "tmp108-ds §6.3, p. 4"
+    status: simplified
+    model: "devices/TMP108.cs#private const decimal MinOperating"
+    note: "A value outside the range is accepted with a warning and clamped to the 12-bit range."
+  - topic: "Configuration, T_LOW and T_HIGH registers"
+    datasheet: "Configuration (mode, conversion rate, hysteresis, alert settings) and the two limit registers are 16-bit and writable. Power-up values: configuration 0x2210, T_LOW 0x8000 (−128 °C), T_HIGH 0x7FF8 (+127.9375 °C)."
+    source: "tmp108-ds §7.5.3, Table 8, p. 13"
+    status: simplified
+    model: "devices/TMP108.cs#case ConfigurationRegister:"
+    note: "They store what is written, but their reset values and their effect on the chip are not modelled."
+  - topic: "Temperature register is read-only"
+    datasheet: "Writes to the temperature register have no effect."
+    source: "tmp108-ds §7.5.2, p. 12"
+    status: modelled
+    model: "devices/TMP108.cs#Write to the read-only temperature register ignored"
+  - topic: "No answer at the address"
+    datasheet: "A device that is not present does not acknowledge its address."
+    source: "n/a general I²C behaviour of an address nobody answers"
+    status: modelled
+    model: "catalog.py#Module(\"tmp108\""
+    driver: "templates/starter/i2c/src/i2c.c#return I2C_ERR_NACK;"
+    test: "templates/starter/tmp108/test/test_thermostat.c#test_missing_sensor_is_reported_and_fails_safe"
+  - topic: "Conversion modes and timing"
+    datasheet: "Continuous, one-shot and shutdown modes; conversion rate 0.25 to 4 Hz."
+    source: "tmp108-ds §7.4, p. 11"
+    status: not-modelled
+    note: "The temperature is whatever the test set, available immediately."
+  - topic: "ALERT pin and hysteresis"
+    datasheet: "The ALERT output follows the T_LOW and T_HIGH comparison with configurable behaviour."
+    source: "tmp108-ds §7.5.3.1, p. 13"
+    status: not-modelled

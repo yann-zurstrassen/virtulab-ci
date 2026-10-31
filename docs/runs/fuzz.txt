@@ -1,0 +1,13 @@
+# Clean clone of feat/security-positioning @ 63107c2, `make fuzz`
+# Machine: Apple M4 Pro, 14 cores, macOS 26.6.2, QEMU 11.1.1, arm-none-eabi-gcc 15.3.1, Apple clang 21
+
+mkdir -p build/fuzz .ci
+cc -std=c99 -Wall -Wextra -Werror -Wconversion -O1 -g -fsanitize=address,undefined \
+	    -fno-sanitize-recover=undefined -Iinclude -Iexamples/crc/include fuzz/parser_fuzz.c src/parser.c \
+	    examples/crc/src/crc.c -o build/fuzz/parser_fuzz
+set -eu -o pipefail; build/fuzz/parser_fuzz --seconds 10 --seed 1 \
+	    --crash-dir fuzz/crashes | tee .ci/fuzz.txt
+FUZZ execs=57634560 crashes=0 regressions=0 seed=1 seconds=10.0
+real 10.32
+user 10.09
+sys 0.10

@@ -91,7 +91,16 @@ The "Largest symbol size changes" table can list `__preinit_array_start` with a 
 - **libFuzzer** is used when a real clang can link it. Apple's clang cannot, so the probe compiles a small harness rather than trusting the flag. The Docker image grew to 2.15 GB for it.
 - **Third-party code** was run with the owner's approval, in a network-isolated container. Details stay in the git-ignored `.private/` folder until the maintainers have them.
 
-- **Known flaky run:** about 1 in 3 to 6 Docker suite runs takes around 680 s instead of 170 s, and a real fault sweep in `test_a_broken_debugger_fails` then fails. The cause is not established. It fails closed, so it costs a rerun, not a false pass. A customer would still see it as an unreliable check, so it needs fixing before a pilot.
+- **Fault sweep ports:** each run now asks the operating system for a free port instead of picking one at random. Before that, about 1 in 3 to 6 Docker suite runs took 680 s and failed. Seven full runs since took about 175 s with no stall. That points to the fix, but the original cause was never confirmed.
+- **Rejected for the sweep:** a gdb pipe, because QEMU writes firmware output to the same stdout, and Unix sockets, which this macOS gdb does not support.
+- **`examples/secure-boot`** is a CMake project with no VirtuLab code. Building it exposed that the sweep discarded firmware output on stderr, which is where `SYS_WRITE0` output lands, and that the image lacked `make`.
+
+## Peripherals and sensor input (2026-10-31)
+
+- **Why now:** the owner said this is very important, because it lets test benches drop analog rigs for scenarios like a temperature environment.
+- **Own ADC model rather than Renode's:** Renode's `STM32_ADC` queues samples through `FeedSample`. A bench source holds a voltage, so a small generated model does that. Register offsets and bits come from ST's STM32F40x SVD file.
+- **Time zero** values are monitor commands, so they apply before the firmware starts. Later values apply on a 1 ms virtual tick, so finer timing than 1 ms is rounded up.
+- **Failed model compilation** is now reported at once, not after the timeout.
 
 ## Review fixes (2026-10-30)
 

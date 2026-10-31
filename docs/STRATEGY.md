@@ -11,12 +11,18 @@ The evidence behind this is in [`MARKET.md`](MARKET.md). Everything here is a hy
 - **Why us:** we run the firmware on each change and report the exact line. Binary scanners work on finished images, and labs come once.
 - **Second market:** medical devices. **Not now:** automotive, which also tends to want MC/DC and qualified tools.
 
+## The product idea that sharpens this
+
+**Bench scenarios become files.** Benches use analog sources and injection rigs to fake a sensor's environment. With project-defined peripherals and scripted sensor input, that scenario lives in the repository and runs on every PR, which also removes the catalog as a bottleneck: a team can describe its own device instead of waiting for us to model it. It replaces the software side of those tests only. Electrical checks stay on the bench.
+
+This came from the founder and is untested with buyers. Ask about it in every discovery call: what rigs do you own, how often are they booked, and which scenarios never get run because they are hard to set up?
+
 ## Proof so far
 
 | Claim | Evidence | Strength |
 | :-- | :-- | :-- |
 | Finds defects in code we did not write | Three widely used open-source parsers, real undefined behaviour in each, in under 90,000 runs | Medium. Low severity, and not yet confirmed by maintainers |
-| Finds fault-injection holes | Found real holes in our own hardened PIN code | Medium. Our own demo code |
+| Finds fault-injection holes | Real holes in our own hardened PIN and secure-boot code, through a plain CMake build | Medium. Our own example code |
 | Setup is quick on outside code | A parser harness took minutes to write | Weak. Written by the author |
 | Teams will pay | None | **None** |
 | Assessors value the output | None | **None** |
@@ -31,7 +37,7 @@ Fuzzing found no memory corruption in those projects, so the honest line is "rea
 | 2 | **Licence just added** | Apache-2.0 is in the working tree, but counts only once committed and pushed | Push it before any outreach |
 | 3 | **Who pays is unclear** | Engineers adopt, compliance may fund it. Different pitch and price | Ask in every call, and find one real budget line |
 | 4 | **Thin moat** | The engine is QEMU, Renode, libFuzzer and GDB, all open. Sensor models are copyable | Build what compounds: evidence history, probe libraries, and customer integrations |
-| 5 | **Works on few real targets** | Fault injection needs a QEMU board, and most real firmware needs peripherals those boards lack | Add Renode fault injection, or fault-inject host-testable logic. Test one real product first |
+| 5 | **Works on few real targets** | Project-defined I²C devices and ADC inputs now help, but only on one STM32F4 board. SPI, UART and timer-driven devices are missing, and fault injection cannot reach sensor-driven code because it needs a QEMU board | Add fault injection on Renode so sensor scenarios and security checks combine. Test one real product first |
 | 6 | **Finding value needs expert effort** | Harnesses and probes need security thinking. That can make this a services business | Probe templates for common patterns, starting with secure boot and PIN checks |
 | 7 | **Demand for outside review may be small** | Secondary sources say default-class products self-assess. Then no assessor asks for our record, and the need is softer | Check the product class of each prospect. Class I and II may be the sharper target |
 | 8 | **Standards are unsettled** | Secondary sources say the CRA harmonised standards are not all published | No standard-mapping claims until the text is read. Keep "evidence", drop "compliance" |
@@ -41,7 +47,7 @@ Fuzzing found no memory corruption in those projects, so the honest line is "rea
 | 12 | **Well-funded neighbours** | ONEKEY offers free analysis, Code Intelligence sells fuzzing, eShard counts Thales as a customer | Partner with scanners. Stay narrow: per-PR, source-line, firmware-specific |
 | 13 | **Name risk** | "The Virtulab" is a UK engineering company, and VirtusLab is a software firm. The EU trademark register blocked automated search, and a web search found nothing, which proves little | Search TMview and USPTO by hand, then ask a trademark lawyer before spending on the brand |
 | 14 | **Website down** | virtulab.io redirects to HTTPS, which fails, so the README now points to GitHub issues. The domain has mail records, but its owner is not confirmed here | Fix the HTTPS certificate or hosting, then restore the site link |
-| 15 | **Product proof gaps** | CI has never run on GitHub, own-build mode has only seen small projects, and fault sweeps sometimes stall and fail | Run the PR; try one real CMake project; fix the stall before a pilot |
+| 15 | **Product proof gaps** | CI has never run on GitHub, and own-build mode has run only on our own CMake example | Run the PR; try one real outside CMake project |
 | 16 | **Founder capacity** | Tool, models, sales and compliance knowledge are a lot for one person | Keep scope to this page, and stop adding sensors |
 
 ## Offer to test
@@ -80,4 +86,4 @@ Change the plan, rather than keep building, if by day 90:
 
 ## Not doing now
 
-More sensors, more boards, replacing vendor IDEs, a hosted product, or compliance claims.
+More catalog sensors, more boards, replacing vendor IDEs, a hosted product, or compliance claims.

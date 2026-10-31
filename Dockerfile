@@ -12,6 +12,9 @@ RUN apt-get update \
         qemu-system-arm \
         gcc \
         clang \
+        cmake \
+        make \
+        ninja-build \
         libclang-rt-dev \
         libc6-dev \
         gdb-multiarch \

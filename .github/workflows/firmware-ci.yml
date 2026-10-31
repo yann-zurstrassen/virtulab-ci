@@ -7,15 +7,10 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
-# The demo firmware (src/, test/, fuzz/, fault/) is checked by the make targets,
-# which drive the engine in this repository. The `thermostat` job still runs the
-# published-action path (Docker image, Renode). Each make-based job leaves a
-# one-line result in .ci/; the `report` job merges them into one sticky comment.
+# The demo firmware (src/, test/, fuzz/, fault/) is described by virtulab.yml. `make` runs the
+# same engine path as the `checks` job, and every job here tests the image built from this code.
 env:
-  TOOLS: qemu-system-arm gcc-arm-none-eabi binutils-arm-none-eabi gdb-multiarch
-  BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'main' }}
   RUN_ACTION_IMAGE: >-
     docker run --rm
     -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$RUNNER_TEMP:$RUNNER_TEMP"
@@ -29,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Build the action image
         run: docker build -t virtulab .
@@ -38,100 +35,159 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src --entrypoint python3 virtulab
           -m unittest discover -v -s tests -t .
 
-  build-test:
-    name: Build & unit tests (QEMU)
+  # Every check of the demo firmware, from virtulab.yml. Runs the pull request's code, so it holds
+  # a read-only token and keeps no credentials on disk.
+  checks:
+    name: All checks (unit, footprint, coverage, fuzz, fault injection)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install toolchain and emulator
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TOOLS
-      - name: make test
-        run: make test
-
-  footprint:
-    name: Footprint (Flash/RAM vs base)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install toolchain and emulator
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TOOLS
-      - name: make footprint
-        run: make footprint BASELINE="$BASELINE_REF"
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: Run VirtuLab CI
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          INPUT_FUZZ_SECONDS: '60'
+          INPUT_COMMENT: 'false'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fragment-footprint
-          path: .ci/footprint.md
-          if-no-files-found: ignore
-
-  coverage:
-    name: Coverage (gcov)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: make coverage
-        run: make coverage
+          name: report
+          path: .virtulab/report.md
+          include-hidden-files: true   # upload-artifact skips dot folders by default
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fragment-coverage
-          path: .ci/coverage.txt
-          if-no-files-found: ignore
-
-  fuzz:
-    name: Fuzz parser (60 s, host-side)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: make fuzz
-        run: make fuzz FUZZ_SECONDS=60
+          name: evidence
+          path: .virtulab/evidence
+          include-hidden-files: true
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fragment-fuzz
-          path: |
-            .ci/fuzz.txt
-            fuzz/crashes/*.crash
+          name: fuzz-crashes
+          path: fuzz/crashes
           if-no-files-found: ignore
 
-  fault-injection:
-    name: Fault injection (single instruction skip)
+  wizard-project:
+    name: New project from `virtulab init` (QEMU, all five tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install toolchain, emulator and GDB
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TOOLS
-      - name: make fault
-        run: make fault
-      - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: fragment-fault
-          path: .ci/fault.txt
-          if-no-files-found: ignore
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: Create a project the way a user would
+        run: >
+          mkdir -p "$RUNNER_TEMP/wizard" &&
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/wizard:/workspace" virtulab
+          init -b lm3s6965evb -t unit,footprint,coverage,fuzz,fault --template starter --ci github -y
+      - name: Run it through the published-action path (reads virtulab.yml, no inputs)
+        shell: bash
+        run: |
+          git -C "$RUNNER_TEMP/wizard" init -q -b main
+          git -C "$RUNNER_TEMP/wizard" add -A
+          git -C "$RUNNER_TEMP/wizard" -c user.name=ci -c user.email=ci@example.invalid commit -q -m init
+          eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: ${{ runner.temp }}/wizard
+          INPUT_BASELINE_REF: HEAD
+          INPUT_COMMENT: 'false'
+          INPUT_REPORT_ID: wizard
 
+  wizard-sensors:
+    name: New project with two I²C sensors (Renode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: Create a project with a TMP108 and a BMP180 on I²C1
+        run: >
+          mkdir -p "$RUNNER_TEMP/sensors" &&
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/sensors:/workspace" virtulab
+          init -b stm32f4_discovery -m temp=tmp108@i2c1:0x48 -m baro=bmp180@i2c1
+          -t unit,coverage --template starter --ci github -y
+      - name: Run it (reads virtulab.yml, no inputs)
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: ${{ runner.temp }}/sensors
+          INPUT_COMMENT: 'false'
+          INPUT_REPORT_ID: sensors
+
+  wizard-all-sensors:
+    name: New project with all 11 sensors on I²C, SPI and UART (Renode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: Create a project with every sensor in the catalog
+        run: >
+          mkdir -p "$RUNNER_TEMP/all-sensors" &&
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/all-sensors:/workspace" virtulab
+          init -b stm32f4_discovery -m temp=tmp108@i2c1 -m baro=bmp180@i2c1 -m power=ina219@i2c1
+          -m imu=mpu6050@i2c1 -m air=sht31@i2c1 -m accel=adxl345@spi1 -m couple=max31855@spi1
+          -m storage=w25q128@spi1 -m gps=nmea_gps@usart1 -m modem=at_modem@usart3 -m rs485=modbus_rtu@uart4
+          -t unit,coverage --template starter --ci github -y
+      - name: Run it (reads virtulab.yml, no inputs)
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: ${{ runner.temp }}/all-sensors
+          INPUT_COMMENT: 'false'
+          INPUT_REPORT_ID: all-sensors
+
+  demo:
+    name: Guided demo (a green run, then three broken changes that must be caught)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: virtulab demo
+        run: docker run --rm virtulab demo -C /tmp/virtulab-demo
+
+  # Holds the write token and never checks out or builds the pull request's code.
   report:
     name: Sticky PR comment
-    needs: [ build-test, footprint, coverage, fuzz, fault-injection ]
+    needs: [ checks ]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: fragment-*
-          path: .ci
-          merge-multiple: true
-      - name: Assemble and post the comment
-        run: python3 tools/ci_report.py --post
+          name: report
+      - name: Post the report
+        continue-on-error: true   # pull requests from forks get a read-only token
+        run: gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file report.md
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
 
   thermostat:
     name: Emulate STM32F4 + I2C sensor (examples/thermostat, Renode)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Build the action image
         run: docker build -t virtulab .
@@ -148,5 +204,5 @@ jobs:
           INPUT_INCLUDE_DIRS: include
           INPUT_PERIPHERALS: board.repl
           INPUT_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
-          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_COMMENT: 'false'
           INPUT_REPORT_ID: thermostat

@@ -267,7 +267,7 @@ def finish(opts: Options, outcome: Outcome, root: Path, work_dir: Path,
     """Print the summary, write report.md, annotate, set outputs, post the comment."""
     result = outcome.build
     status = outcome.status
-    summary = STATUS_LABELS[status]
+    summary = STATUS_LABELS[FAILED if status == PASSED and not extra_ok else status]
     if outcome.run:
         summary += f" in {outcome.run.duration:.2f}s"
         if outcome.run.exit_code not in (None, 0):

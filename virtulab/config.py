@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import MONITOR_MARK, VirtulabError, yamlite
+from . import MONITOR_MARK, VirtulabError, peripherals as custom, yamlite
 from .boards import BOARDS
 from .catalog import DEFAULT_TESTS, MODULES, PROTOCOLS, TESTS, get_module, get_test
 from .yamlite import Hex
@@ -18,7 +18,8 @@ from .yamlite import Hex
 CONFIG_NAMES = ("virtulab.yml", "virtulab.yaml")
 SCHEMA_VERSION = 1
 
-_TOP_KEYS = ("version", "board", "build", "timeout", "modules", "tests", "ci")
+_TOP_KEYS = ("version", "board", "build", "timeout", "modules", "peripherals", "analog", "stimulus", "stimulus_file",
+             "tests", "ci")
 _BUILD_KEYS = ("sources", "include", "cflags", "ldflags", "linker_script", "runtime", "command", "elf")
 _MODULE_KEYS = ("model", "bus", "address", "cs")
 _CI_KEYS = ("provider", "branches")
@@ -48,6 +49,13 @@ class ProjectConfig:
     build_elf: str | None = None  # the ELF that command produces
     timeout: str = "30s"
     modules: dict[str, ModuleSpec] = field(default_factory=dict)
+    peripherals: dict[str, custom.Peripheral] = field(default_factory=dict)
+    analog: dict[str, custom.AnalogBlock] = field(default_factory=dict)
+    raw_analog: dict = field(default_factory=dict)
+    stimulus: list[custom.Stimulus] = field(default_factory=list)
+    stimulus_file: str | None = None
+    raw_peripherals: dict = field(default_factory=dict)
+    raw_stimulus: list = field(default_factory=list)
     tests: dict[str, dict] = field(default_factory=lambda: {t: {} for t in DEFAULT_TESTS})
     ci_provider: str = "github"
     ci_branches: list[str] = field(default_factory=lambda: ["main"])
@@ -77,6 +85,14 @@ class ProjectConfig:
                 if m.cs is not None:
                     entry["cs"] = m.cs
                 data["modules"][name] = entry
+        if self.raw_peripherals:
+            data["peripherals"] = self.raw_peripherals
+        if self.raw_analog:
+            data["analog"] = self.raw_analog
+        if self.raw_stimulus:
+            data["stimulus"] = self.raw_stimulus
+        if self.stimulus_file:
+            data["stimulus_file"] = self.stimulus_file
         data["tests"] = {t: dict(opts) for t, opts in self.tests.items()}
         data["ci"] = {"provider": self.ci_provider, "branches": list(self.ci_branches)}
         return data
@@ -167,6 +183,22 @@ def from_dict(data: dict) -> ProjectConfig:
             raise VirtulabError(f"virtulab.yml: module '{name}' cs must be a pin name, e.g. PA4")
         cfg.modules[str(name)] = ModuleSpec(str(name), str(spec["model"]), str(spec["bus"]), address, cs)
 
+    declared = _expect("peripherals", data.get("peripherals"), dict) or {}
+    for name, spec in declared.items():
+        if not _NAME.fullmatch(str(name)):
+            raise VirtulabError(f"virtulab.yml: peripheral name '{name}' must be lowercase letters, "
+                                "digits and underscores, starting with a letter")
+        if str(name) in cfg.modules:
+            raise VirtulabError(f"virtulab.yml: '{name}' is both a module and a peripheral")
+        cfg.peripherals[str(name)] = custom.parse_peripheral(str(name), _expect(f"peripheral '{name}'", spec, dict) or {})
+    cfg.raw_peripherals = declared
+    cfg.raw_analog = _expect("analog", data.get("analog"), dict) or {}
+    for name, spec in cfg.raw_analog.items():
+        cfg.analog[str(name)] = custom.parse_analog(str(name), _expect(f"analog '{name}'", spec, dict) or {})
+    cfg.raw_stimulus = _expect("stimulus", data.get("stimulus"), list) or []
+    cfg.stimulus = custom.parse_stimulus(cfg.raw_stimulus)
+    cfg.stimulus_file = data.get("stimulus_file") or None
+
     tests = data.get("tests")
     if tests is None:
         cfg.tests = {t: {} for t in DEFAULT_TESTS}
@@ -244,6 +276,10 @@ def parse_pin(text: str) -> tuple[str, int]:
 
 def sim_path(cfg: ProjectConfig, name: str) -> str:
     """The emulator monitor path of a module, as used in `vl_sim("<path> Property value")`."""
+    if name in cfg.analog:
+        return f"sysbus.{name}"
+    if name in cfg.peripherals:
+        return f"sysbus.{cfg.peripherals[name].bus}.{name}"
     m = cfg.modules[name]
     module = get_module(m.model)
     if module.protocol == "uart":
@@ -253,7 +289,25 @@ def sim_path(cfg: ProjectConfig, name: str) -> str:
     return f"sysbus.{m.bus}.{m.name}"
 
 
-def renode_repl(cfg: ProjectConfig) -> str | None:
+def all_stimulus(cfg: ProjectConfig, root: Path | None) -> list[custom.Stimulus]:
+    """The timeline and the recorded trace together, in time order."""
+    steps = list(cfg.stimulus)
+    if cfg.stimulus_file and root is not None:
+        steps += custom.read_trace(root / cfg.stimulus_file)
+    return sorted(steps, key=lambda s: s.at_ms)
+
+
+def generated_models(cfg: ProjectConfig, root: Path | None) -> dict[str, str]:
+    """Renode model sources this project needs, by file name."""
+    files = {f"{p.class_name}.cs": custom.model_source(p) for p in cfg.peripherals.values()}
+    files.update({f"{a.class_name}.cs": custom.analog_source(a) for a in cfg.analog.values()})
+    timed = [(s.at_ms, sim_path(cfg, s.module), s.prop, s.value) for s in all_stimulus(cfg, root) if s.at_ms > 0]
+    if timed:
+        files["Stimulus.cs"] = custom.stimulus_source(timed)
+    return files
+
+
+def renode_repl(cfg: ProjectConfig, root: Path | None = None) -> str | None:
     """The generated Renode lines for the declared modules. Users never write these.
 
     SPI devices sit behind a multiplexer on their bus, which turns the chip-select GPIO
@@ -290,6 +344,14 @@ def renode_repl(cfg: ProjectConfig) -> str | None:
             address = m.address if m.address is not None else module.default_address
             target = f"{m.bus} {address:#04x}" if address is not None else m.bus
             lines.append(f"{m.name}: {module.renode_type} @ {target}")
+    for p in cfg.peripherals.values():
+        lines.append(f"{p.name}: VirtuLab.{p.class_name} @ {p.bus} {p.address:#04x}")
+    for a in cfg.analog.values():
+        lines.append(f"{a.name}: VirtuLab.{a.class_name} @ sysbus {a.base:#x}")
+    steps = all_stimulus(cfg, root)
+    if any(s.at_ms > 0 for s in steps):
+        lines.append("vl_stimulus: VirtuLab.Stimulus")
+    monitor += [f"{sim_path(cfg, s.module)} {s.prop} {s.value!r}" for s in steps if s.at_ms == 0]
     if not lines:
         return None
     # Time: the core runs from the 16 MHz reset clock, so SysTick counts at that rate and a

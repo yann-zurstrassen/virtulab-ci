@@ -1,0 +1,16 @@
+# An oven controller reading a temperature sensor through the chip's ADC.
+# The temperature profile replaces the analog source a bench would plug into the pin.
+version: 1
+board: stm32f4_discovery
+build:
+  sources: [src/*.c, test/*.c]
+  include: [include]
+  cflags: "-std=c99 -Wall -Wextra"
+timeout: 30s
+analog:
+  adc1:
+    vref: 3.3
+    inputs: { oven_temp: 1 }
+stimulus_file: inputs/overheat.csv
+tests:
+  unit: {}

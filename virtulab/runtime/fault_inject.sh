@@ -75,7 +75,7 @@ classify() {
 
 run_original() {
     # shellcheck disable=SC2046
-    run_bounded "$qemu" $(qemu_args) > "$work/original.out" 2> /dev/null
+    run_bounded "$qemu" $(qemu_args) > "$work/original.out" 2>&1  # semihosting console output can be on stderr
     classify "$work/original.out"
 }
 
@@ -95,8 +95,16 @@ wait_or_kill() {
 # never reached, the first `continue` runs to exit and gdb aborts the script at `set $pc`.
 # Straight-line commands, not a breakpoint `commands` block: gdb would end the batch
 # (and kill the target) before the firmware finished.
+# The operating system picks a free port for each run, so two sweeps on one machine cannot
+# collide. QEMU needs a moment before it listens; a refused connection costs nothing, so retry.
+# If it never connects, the run ends as a hang and the sweep fails.
+free_port() {
+    python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
+}
+
 run_faulted() {
-    local at="$1" resume="$2" port=$((30000 + RANDOM % 20000)) tries=0
+    local at="$1" resume="$2" port tries=0
+    port="$(free_port)"
     cat > "$work/gdb.cmd" <<EOF
 set pagination off
 set confirm off
@@ -108,9 +116,8 @@ printf "FAULT_APPLIED\\n"
 continue
 EOF
     # shellcheck disable=SC2046
-    "$qemu" $(qemu_args) -S -gdb "tcp:127.0.0.1:$port" < /dev/null > "$work/faulted.out" 2> /dev/null &
+    "$qemu" $(qemu_args) -S -gdb "tcp:127.0.0.1:$port" < /dev/null > "$work/faulted.out" 2>&1 &
     local qemu_pid=$!
-    # QEMU needs a moment before it listens; a refused connection costs nothing, so retry.
     while :; do
         run_bounded "$gdb" -batch -nx "$elf" -x "$work/gdb.cmd" > "$work/gdb.out" 2>&1
         if grep -q 'Connection refused' "$work/gdb.out" && [ "$tries" -lt 50 ]; then
@@ -178,7 +185,7 @@ while read -r addr size name offset text; do
     applied_count=$((applied_count + 1))
     case "$result" in
         BYPASS) bypass=$((bypass + 1))
-                printf '0x%08x   %-26s %-28s %-9s %s\n' "0x$addr" "$name+$offset" "$text" "$original" "BYPASS (wrong PIN granted)" ;;
+                printf '0x%08x   %-26s %-28s %-9s %s\n' "0x$addr" "$name+$offset" "$text" "$original" "BYPASS (property broken)" ;;
         denied) denied=$((denied + 1)) ;;
         *) crashed=$((crashed + 1)) ;;
     esac

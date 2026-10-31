@@ -1,5 +1,6 @@
 """A team keeps its own build: VirtuLab runs the command and tests the ELF it produces."""
 
+import json
 import shutil
 import subprocess
 import tempfile
@@ -10,6 +11,7 @@ from virtulab import VirtulabError, config
 from virtulab.cli import main
 from tests.test_e2e import CRC_EXAMPLE, HAVE_TOOLS
 
+EXAMPLE = CRC_EXAMPLE.parent / "secure-boot"
 CONFIG = """\
 version: 1
 board: lm3s6965evb
@@ -77,6 +79,34 @@ class OwnBuildTest(unittest.TestCase):
         subprocess.run([*git, "commit", "-qm", "base"], check=True)
         self.assertEqual(main(["run", "-C", str(self.root), "--baseline", "HEAD"]), 0)
         self.assertIn("±0 B", (self.root / ".virtulab" / "report.md").read_text())
+
+
+@unittest.skipUnless(HAVE_TOOLS and shutil.which("cmake")
+                     and (shutil.which("gdb-multiarch") or shutil.which("arm-none-eabi-gdb")),
+                     "the toolchain, CMake, QEMU and an Arm gdb are required")
+class SecureBootExampleTest(unittest.TestCase):
+    """A project with no VirtuLab code in it, from CMake to the fault sweep."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.root = self.tmp / "secure-boot"
+        shutil.copytree(EXAMPLE, self.root, ignore=shutil.ignore_patterns("build", ".virtulab"))
+
+    def test_the_hardened_check_holds(self):
+        self.assertEqual(main(["run", "-C", str(self.root), "--only", "unit,fault"]), 0)
+
+    def test_the_plain_check_is_caught_at_its_source_line(self):
+        path = self.root / "virtulab.yml"
+        path.write_text(path.read_text().replace("-B build/vl", "-B build/vl -DBOOT_HARDENED=OFF"))
+        self.assertEqual(main(["run", "-C", str(self.root), "--only", "unit,fault"]), 1)
+        report = (self.root / ".virtulab" / "report.md").read_text()
+        self.assertIn("❌ FAILED", report)
+        sarif = json.loads((self.root / ".virtulab" / "evidence" / "results.sarif").read_text())
+        uris = [r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+                for r in sarif["runs"][0]["results"] if r["ruleId"] == "VL-FAULT"]
+        self.assertTrue(uris)
+        self.assertTrue(all(u.endswith("src/boot.c") for u in uris), uris)
 
 
 if __name__ == "__main__":

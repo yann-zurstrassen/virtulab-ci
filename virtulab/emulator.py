@@ -113,6 +113,7 @@ def _renode_script(board: Board, elf: Path, work_dir: Path, peripherals: str | N
     if peripherals and "VirtuLab." in peripherals:
         # Compile the VirtuLab device library (datasheet-accurate models) into Renode.
         lines += [f"include @{model}" for model in sorted(DEVICES_DIR.glob("*.cs"))]
+        lines += [f"include @{model}" for model in sorted((work_dir / "models").glob("*.cs"))]
     lines += [
         'mach create "virtulab"',
         f"machine LoadPlatformDescription @{board.platform}",
@@ -147,6 +148,8 @@ def _renode_error(log: Path) -> str | None:
         return None
     text = _ANSI.sub("", log.read_text(errors="replace"))
     start = text.find("There was an error executing command")
+    if start < 0:
+        start = text.find("Errors during compilation or loading")  # a model that does not compile
     if start < 0:
         return None
     block = text[start:].split("\n\n")[0].split("[INFO]")[0]

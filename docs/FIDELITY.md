@@ -91,6 +91,12 @@ tests. It does not mean verified against silicon. What each model leaves out is 
 - A UART carries one device in the emulator (a hub joins the two ends).
 - The GPS, modem and Modbus models answer at once and only when the test or the firmware asks. Bytes are not paced by baud rate, so a wrong baud rate or a driver too slow to drain the UART is not caught. The GPS sends a sentence only when the test asks for it (`EmitFix`).
 
+## Peripherals a project defines
+
+A `peripherals:` model does what its register list says, and nothing has checked that against a datasheet: reads and writes, reset values and read-only bytes, with auto-increment. It has no timing or side effects. `virtulab check` shows these as warnings.
+
+The `analog:` ADC is a polled, single-channel STM32F4 model written by VirtuLab, with offsets and bits taken from ST's SVD file. An input holds an ideal voltage until it changes. It does not model conversion time, sampling, noise, resolution other than 12 bits, scan mode, injected channels, DMA, interrupts or the reference voltage's accuracy. A wrong ADC clock setup in firmware is not caught.
+
 ## Time
 
 Delays and device latencies run on the emulator's **virtual clock**, not the host's, so a run gives the same

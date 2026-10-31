@@ -13,7 +13,8 @@ from pathlib import Path
 from . import emulator
 from .boards import BOARDS
 from .catalog import board_buses, get_module, get_test, PROTOCOLS
-from .config import ProjectConfig, option, parse_pin
+from . import VirtulabError
+from .config import ProjectConfig, all_stimulus, option, parse_pin
 
 OK, WARN, ERROR = "ok", "warn", "error"
 _ICON = {OK: "✅", WARN: "⚠️ ", ERROR: "❌"}
@@ -171,6 +172,51 @@ def check(cfg: ProjectConfig, root: Path | None = None, tools: bool | str = True
             res.add(OK, label, f"{module.title} on {where}: datasheet model")
         else:
             res.add(WARN, label, f"{module.title} on {where}: built-in Renode model. {module.gaps or 'Partial model.'}")
+
+    for p in cfg.peripherals.values():
+        if p.name in board.reserved_names:
+            res.add(ERROR, p.name, f"'{p.name}' is already a peripheral of {cfg.board}. Rename it.")
+        elif not buses:
+            res.add(ERROR, p.name, f"{cfg.board} runs on QEMU and cannot host peripherals. Pick stm32f4_discovery.")
+        elif buses.get(p.bus) != "i2c":
+            res.add(ERROR, p.name, f"Custom peripherals work on I²C buses for now. Available: "
+                                   f"{', '.join(b for b, k in buses.items() if k == 'i2c')}")
+        elif used.get((p.bus, p.address)):
+            res.add(ERROR, p.name, f"address {p.address:#04x} on {p.bus} is already used by '{used[(p.bus, p.address)]}'")
+        else:
+            used[(p.bus, p.address)] = p.name
+            res.add(WARN, p.name, f"custom peripheral on {p.bus} @ {p.address:#04x}: your register list, "
+                                  "not checked against a datasheet")
+    for a in cfg.analog.values():
+        if cfg.board != "stm32f4_discovery":
+            res.add(ERROR, a.name, f"Analog inputs work on stm32f4_discovery for now, not {cfg.board}.")
+        else:
+            res.add(WARN, a.name, f"ADC with {len(a.inputs)} input(s), {a.vref:g} V reference. Voltages are ideal: "
+                                  "no noise, sampling or conversion time")
+    try:
+        steps = all_stimulus(cfg, root)
+    except VirtulabError as exc:
+        res.add(ERROR, "stimulus", str(exc))
+        steps = []
+    for s in steps:
+        if s.module in cfg.analog:
+            if s.prop not in cfg.analog[s.module].inputs:
+                res.add(ERROR, "stimulus", f"{s.module} has no input '{s.prop}'")
+                break
+            continue
+        if s.module not in cfg.modules and s.module not in cfg.peripherals:
+            res.add(ERROR, "stimulus", f"'{s.module}' is not a module or peripheral of this project")
+            break
+        if s.module in cfg.peripherals and s.prop not in {r.name for r in cfg.peripherals[s.module].registers}:
+            res.add(ERROR, "stimulus", f"{s.module} has no register '{s.prop}'")
+            break
+        if s.module in cfg.modules and s.prop not in get_module(cfg.modules[s.module].model).sim:
+            res.add(ERROR, "stimulus", f"{cfg.modules[s.module].model} has no input '{s.prop}'. "
+                                       f"Available: {', '.join(get_module(cfg.modules[s.module].model).sim)}")
+            break
+    else:
+        if steps:
+            res.add(OK, "stimulus", f"{len(steps)} sensor input step(s) on the virtual clock")
 
     # Tests
     for tid in cfg.tests:

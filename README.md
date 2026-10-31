@@ -89,7 +89,31 @@ tests:
     functions: [verify_pin]
 ```
 
-The ELF must exit through semihosting and print Unity-style results. Coverage is skipped in this mode for now, and fault injection still needs a QEMU board.
+[`examples/secure-boot`](examples/secure-boot) is a full CMake project with no VirtuLab code in it. The ELF must exit through semihosting and print Unity-style results. Coverage is skipped in this mode for now, and fault injection still needs a QEMU board.
+
+## 🌡️ Your own peripherals and sensor input, no analog rig
+
+Benches use signal sources and analog injection to fake a sensor's environment. Here that scenario is a file in the repository, and it runs on every PR. Describe your own I²C device as a register list, name your ADC inputs, and script what they see over time, or replay a recorded CSV:
+
+```yaml
+peripherals:
+  tank:
+    bus: i2c1
+    address: 0x55
+    registers:
+      - { name: ID, at: 0x00, reset: 0xA5, access: ro }
+      - { name: LEVEL, at: 0x01, size: 2, access: ro }
+analog:
+  adc1: { vref: 3.3, inputs: { oven_temp: 1 } }
+stimulus:
+  - { at: 0ms, set: tank.LEVEL, value: 100 }
+  - { at: 50ms, set: adc1.oven_temp, value: 2.4 }
+stimulus_file: inputs/overheat.csv    # time_ms,adc1.oven_temp
+```
+
+Input runs on the emulator's virtual clock, so a run gives the same result every time. Catalog sensors take input the same way (`temp.Temperature`). See [`examples/oven-controller`](examples/oven-controller) and [`examples/custom-sensor`](examples/custom-sensor).
+
+This replaces the software side of those bench tests. Voltages are ideal, with no noise, sampling or conversion time, so analog front ends, ADC accuracy and electrical faults stay on the real bench. Custom peripherals are I²C for now, and analog inputs are polled, single-channel conversions on `stm32f4_discovery`.
 
 ## 🎯 Who it's for
 

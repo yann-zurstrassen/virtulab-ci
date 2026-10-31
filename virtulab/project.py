@@ -11,7 +11,7 @@ from . import VirtulabError, evidence, github
 from .check import check
 from .cigen import IMAGE
 from .cli import EXIT_ERROR, EXIT_FAILED, Options, finish, parse_byte_limit, parse_timeout, run_unit
-from .config import ProjectConfig, option, renode_repl
+from .config import ProjectConfig, generated_models, option, renode_repl
 from .report import marker
 from .suite import _ICON, FAIL, SuiteResult, run_extra, unit_checks
 
@@ -44,7 +44,7 @@ def to_options(cfg: ProjectConfig, root: Path, base: Options) -> Options:
         runtime=cfg.runtime,
         build_command=cfg.build_command,
         build_elf=cfg.build_elf,
-        peripherals=renode_repl(cfg),
+        peripherals=renode_repl(cfg, root),
         timeout=parse_timeout(cfg.timeout),
         baseline_ref=base.baseline_ref if footprint is not None else None,
         max_flash_increase=(base.max_flash_increase if base.max_flash_increase is not None else
@@ -82,6 +82,11 @@ def run_project(cfg: ProjectConfig, root: Path, base: Options) -> int:
     suite = SuiteResult()
 
     if "unit" in cfg.tests or "footprint" in cfg.tests:
+        models = work / "emulator" / "models"
+        shutil.rmtree(models, ignore_errors=True)
+        models.mkdir(parents=True)
+        for name, source in generated_models(cfg, root).items():
+            (models / name).write_text(source)
         outcome, root, work = run_unit(opts)
         suite.outcome = outcome
         suite.checks += unit_checks(outcome, cfg)

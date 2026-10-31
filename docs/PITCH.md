@@ -68,7 +68,7 @@ The first two are the differentiator: ordinary unit tests pass, and these checks
 
 ---
 
-## The demo (about 90 seconds, start to finish)
+## The demo (about 3 minutes, start to finish)
 
 Command: `virtulab demo`. Transcript: [`demo-run.txt`](demo-run.txt). The same story, as five pull requests with their real report comments: [`demo-prs/`](demo-prs/).
 
@@ -149,7 +149,9 @@ The history says the buyer decides the business. The security angle is our answe
 3. **Find something in firmware we did not write.** Pick an open-source project with a bootloader or authentication check and run the checks on it unchanged. A real finding there is the pitch.
 4. **Show that result to 3 to 5 teams in regulated industries** before building more. What they ask for (MC/DC, multi-instruction glitches, reports a certifier accepts) sets the next quarter.
 
-**Paused:** adding sensors to the catalogue, and replacing vendor IDEs ([`ROADMAP.md`](../ROADMAP.md)). The datasheet mapping stays the quality bar for the 11 models we have.
+**Priority:** teams defining their own peripherals and scripting sensor input, so bench scenarios become files in the repository.
+
+**Paused:** adding sensors to the catalogue by hand, and replacing vendor IDEs ([`ROADMAP.md`](../ROADMAP.md)). The datasheet mapping stays the quality bar for the 11 models we have.
 
 ---
 

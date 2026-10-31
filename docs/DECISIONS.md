@@ -102,6 +102,14 @@ The "Largest symbol size changes" table can list `__preinit_array_start` with a 
 - **Time zero** values are monitor commands, so they apply before the firmware starts. Later values apply on a 1 ms virtual tick, so finer timing than 1 ms is rounded up.
 - **Failed model compilation** is now reported at once, not after the timeout.
 
+## Rules and custom models (2026-10-31)
+
+- **No VirtuLab runtime API.** Data files and rules are settings. Anything beyond them is an ordinary Renode model, listed under `models:` and `repl:`. Renode owns and documents that interface, so there is nothing of ours to version. This is a deliberate, advanced exception to the roadmap's "users never write Renode syntax".
+- **Rules** check pins on a 1 ms virtual tick, and each fires once.
+- **The skip is a compiled model armed by a virtual timer.** A Python hook ran on every pass through a polling loop, which took minutes per run.
+- **Memory:** a faulted run can flood its log, 114 MB in 45 s on a slow disk and likely far more on a fast one, and the engine reread the whole file every 50 ms. That is the most likely cause of the out-of-memory kills. Logs are now read in bounded pieces, and a run stops at 32 MB of log and counts as crashed.
+- **Parallel runs:** a Renode process holds about 1.2 GB, so `RENODE_WORKERS` allows one run per 3 GB of the memory limit. That budget was set before the log bug was found and may be too cautious. It makes the suite slow on a small machine: 174 tests took about 24 minutes with 8 GB.
+
 ## Physical scenarios and timed faults (2026-10-31)
 
 - **One image, many cases.** Scenarios change the inputs, never the build, so every result is about the same firmware.

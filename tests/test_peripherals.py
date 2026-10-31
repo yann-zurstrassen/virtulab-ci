@@ -17,11 +17,29 @@ BASE = {"board": "stm32f4_discovery", "tests": {"unit": {}}}
 TANK = {"bus": "i2c1", "address": 0x55, "registers": [{"name": "LEVEL", "at": 1, "size": 2, "access": "ro"}]}
 
 
+TANK_FULL = {"bus": "i2c1", "address": 0x55, "registers": [
+    {"name": "ID", "at": 0, "reset": 0xA5, "access": "ro"}, {"name": "LEVEL", "at": 1, "size": 2, "access": "ro"},
+    {"name": "LIMIT", "at": 3, "size": 2, "reset": 800}]}
+
+
 def cfg(**extra):
     return config.from_dict({**BASE, **extra})
 
 
 class ConfigTest(unittest.TestCase):
+    def test_bad_rules_are_explained(self):
+        for bad in ({"when": "PA1", "set": "PA2"}, {"when": "PA1", "is": "maybe", "set": "PA2", "to": 1},
+                    {"when": "PA1", "set": "PA2", "to": "yes"}, {"when": "PA1", "for": "soon", "set": "PA2", "to": 1},
+                    {"when": "PA1", "set": "PA2", "to": 1, "colour": "red"}):
+            with self.assertRaises(VirtulabError, msg=str(bad)):
+                cfg(rules=[bad])
+
+    def test_the_board_check_catches_bad_rule_targets(self):
+        def errors(rule):
+            return " ".join(f.message for f in check(cfg(rules=[rule]), None, tools=False).errors)
+        self.assertIn("pin name", errors({"when": "Z9", "set": "PA2", "to": 1}))
+        self.assertIn("not a module", errors({"when": "PA1", "set": "ghost.X", "to": 1}))
+
     def test_scenario_verdicts_keep_a_crash_apart_from_a_failure(self):
         case = Case("c", [], None, ["HEATER=OFF"], ["HEATER=ON"])
         self.assertEqual(_fault_verdict(case, "HEATER=OFF", 0), "held")
@@ -186,6 +204,32 @@ class EmulationTest(unittest.TestCase):
         path.write_text(path.read_text().replace("stimulus_file: inputs/normal_warmup.csv\n        expect: HEATER=ON",
                                                  "stimulus_file: inputs/normal_warmup.csv\n        expect: HEATER=OFF"))
         self.assertEqual(self.run_scenarios(root)[0], 1)
+
+    def test_a_rule_lets_the_world_react_to_a_pin(self):
+        code, record = self.run_scenarios(self.project("motor-limit-switch"))
+        self.assertEqual(code, 0)
+        self.assertGreater(record["checks"][0]["data"]["swept"], 0)
+
+    def test_a_motor_left_running_by_one_skip_is_caught(self):
+        root = self.project("motor-limit-switch")
+        path = root / "virtulab.yml"
+        path.write_text(path.read_text().replace('cflags: "-std=c99 -Wall -Wextra"',
+                                                 'cflags: "-std=c99 -Wall -Wextra -DGATE_HARDENED=0"'))
+        self.assertEqual(self.run_scenarios(root)[0], 1)
+
+    def test_a_users_own_renode_model_is_loaded_as_it_is(self):
+        root = self.project("custom-sensor")
+        source = peripherals.model_source(peripherals.parse_peripheral("tank", TANK_FULL)).replace("Custom_tank", "MyTank")
+        (root / "models").mkdir()
+        (root / "models/MyTank.cs").write_text(source)
+        (root / "models/tank.repl").write_text("tank: VirtuLab.MyTank @ i2c1 0x55\n")
+        path = root / "virtulab.yml"
+        text = path.read_text()
+        head, _, tail = text.partition("peripherals:\n")
+        path.write_text(head + "models: [models/MyTank.cs]\nrepl: models/tank.repl\n" + tail[tail.index("tests:"):])
+        (root / "test/test_tank.c").write_text((root / "test/test_tank.c").read_text()
+                                               .replace("    RUN_TEST(test_the_alarm_follows_the_filling_trace);\n", ""))
+        self.assertEqual(self.run_only_unit(root), 0)
 
     def test_runs_give_the_same_test_results(self):
         root = self.project("oven-controller")

@@ -24,6 +24,24 @@ bool gate_motor_running(void)
     return (GPIOA_ODR & (1u << MOTOR_PIN)) != 0u;
 }
 
+#ifndef GATE_HARDENED
+#define GATE_HARDENED 1
+#endif
+
+#if GATE_HARDENED
+/* Two separate writes: one skipped instruction cannot leave the motor running. */
+static inline __attribute__((always_inline)) void motor_stop(void)
+{
+    GPIOA_ODR &= ~(1u << MOTOR_PIN);
+    GPIOA_ODR &= ~(1u << MOTOR_PIN);
+}
+#else
+static void motor_stop(void)
+{
+    GPIOA_ODR &= ~(1u << MOTOR_PIN);
+}
+#endif
+
 gate_result_t gate_open(void)
 {
     uint32_t start = millis();
@@ -31,10 +49,10 @@ gate_result_t gate_open(void)
     GPIOA_ODR |= 1u << MOTOR_PIN;
     while ((GPIOA_IDR & (1u << SWITCH_PIN)) == 0u) {
         if (millis() - start > GATE_TIMEOUT_MS) {
-            GPIOA_ODR &= ~(1u << MOTOR_PIN);
+            motor_stop();
             return GATE_JAMMED; /* a stuck motor must not keep running */
         }
     }
-    GPIOA_ODR &= ~(1u << MOTOR_PIN);
+    motor_stop();
     return GATE_OPEN_OK;
 }

@@ -134,7 +134,14 @@ tests:
         faults: [200ms, 202ms, 204ms]
 ```
 
-A run that crashes during a fault is reported apart from one that reaches the forbidden outcome, and is not treated as safe. Input is scripted for now, so the simulated world does not react to the firmware. See [`examples/oven-controller`](examples/oven-controller).
+A run that crashes during a fault is reported apart from one that reaches the forbidden outcome, and is not treated as safe. The simulated world can also react to the firmware through simple rules, such as "the motor runs for 10 s, then a switch trips":
+
+```yaml
+rules:
+  - { when: PA1, is: high, for: 10s, set: PA2, to: 1 }
+```
+
+For anything rules cannot express, write a normal Renode model and list it under `models:` and `repl:`. See [`examples/oven-controller`](examples/oven-controller) and [`examples/motor-limit-switch`](examples/motor-limit-switch).
 
 ## 🎯 Who it's for
 

@@ -45,12 +45,60 @@ bus.WriteDoubleWord({ack:#x}, status)
 """
 
 
-# Runs each time the CPU reaches the attacked instruction: resume past it, once.
-_SKIP_HOOK = """\
-import os
-if not os.path.exists({marker!r}) and machine.LocalTimeSource.ElapsedVirtualTime.TotalMilliseconds >= {after_ms!r}:
-    open({marker!r}, 'w').close()
-    self.PC = type(self.PC).Create({resume:#x}, 32)
+# Skips one instruction, once. It is compiled, and armed only when its moment comes, because a
+# hook that runs on every pass through a polling loop would take minutes.
+_FAULT_MODEL = """\
+using System;
+using System.IO;
+using System.Linq;
+using Antmicro.Renode.Core;
+using Antmicro.Renode.Peripherals;
+using Antmicro.Renode.Peripherals.CPU;
+using Antmicro.Renode.Peripherals.Timers;
+using Antmicro.Renode.Time;
+
+namespace Antmicro.Renode.Peripherals.VirtuLab
+{{
+    public class FaultArm : IPeripheral
+    {{
+        public FaultArm(IMachine machine)
+        {{
+            cpu = machine.SystemBus.GetCPUs().OfType<ICpuSupportingGdb>().First();
+            if({after_ms}UL == 0)
+            {{
+                Arm();
+                return;
+            }}
+            timer = new LimitTimer(machine.ClockSource, 1000, this, "fault", {after_ms}UL, Direction.Descending, true, WorkMode.OneShot, true);
+            timer.LimitReached += Arm;
+        }}
+
+        public void Reset()
+        {{
+        }}
+
+        private void Arm()
+        {{
+            cpu.AddHook({at}UL, Skip);
+        }}
+
+        private void Skip(ICpuSupportingGdb target, ulong address)
+        {{
+            if(done)
+            {{
+                return;
+            }}
+            done = true;
+            File.WriteAllText(@"{marker}", "");
+            target.RemoveHooksAt({at}UL);
+            target.PC = {resume}UL;
+        }}
+
+        private readonly ICpuSupportingGdb cpu;
+        private readonly LimitTimer timer;
+        private bool done;
+    }}
+}}
 """
 
 
@@ -151,10 +199,6 @@ def _renode_script(board: Board, elf: Path, work_dir: Path, peripherals: str | N
         hook = work_dir / "vl_sim_hook.py"
         hook.write_text(_SIM_HOOK.format(log=str(sim_log), ack=symbols["vl_sim_ack"]))
         lines.append(f"cpu AddHook {symbols['vl_sim_hook']:#x} \"execfile('{hook}')\"")
-    if skip:
-        hook = work_dir / "vl_skip_hook.py"
-        hook.write_text(_SKIP_HOOK.format(resume=skip.resume, marker=str(skip.marker), after_ms=skip.after_ms))
-        lines.append(f"cpu AddHook {skip.at:#x} \"execfile('{hook}')\"")
     lines.append("start")
     script = work_dir / "run.resc"
     script.write_text("\n".join(lines) + "\n")
@@ -162,13 +206,21 @@ def _renode_script(board: Board, elf: Path, work_dir: Path, peripherals: str | N
 
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_LOG_HEAD_BYTES = 8 * 1024 * 1024  # set-up errors and model warnings come early
+_MAX_LOG_BYTES = 32 * 1024 * 1024  # a crash loop can log gigabytes, so a run stops here
+
+
+def _log_head(log: Path) -> str:
+    """The start of a log. Never the whole file: a firmware crash can flood it."""
+    with log.open(errors="replace") as handle:
+        return handle.read(_LOG_HEAD_BYTES)
 
 
 def _renode_error(log: Path) -> str | None:
     """The text of a failed Renode command ("There was an error executing command ..."), if any."""
     if not log.exists():
         return None
-    text = _ANSI.sub("", log.read_text(errors="replace"))
+    text = _ANSI.sub("", _log_head(log))
     start = text.find("There was an error executing command")
     if start < 0:
         start = text.find("Errors during compilation or loading")  # a model that does not compile
@@ -198,7 +250,7 @@ def model_warnings(log: Path, peripherals: str | None) -> list[str]:
     names = set(_MODEL_NAME.findall(description))
     declared = _DECLARED.findall(description)
     found: list[str] = []
-    for line in _ANSI.sub("", log.read_text(errors="replace")).splitlines():
+    for line in _ANSI.sub("", _log_head(log)).splitlines():
         miss = _NO_TARGET.search(line)
         if miss:
             bus, address = miss[1], miss[2]
@@ -226,17 +278,27 @@ def _read_pc(proc: subprocess.Popen, log: Path) -> int | None:
         return None
     for _ in range(40):
         time.sleep(0.05)
-        text = _ANSI.sub("", log.read_bytes()[size:].decode(errors="replace")).replace("\r", "\n")  # Renode ends lines with \r
+        with log.open("rb") as handle:
+            handle.seek(size)
+            new = handle.read(65536).decode(errors="replace")
+        text = _ANSI.sub("", new).replace("\r", "\n")  # Renode ends lines with \r
         match = re.search(r"^0x([0-9a-fA-F]+)\s*$", text, re.MULTILINE)
         if match:
             return int(match[1], 16)
     return None
 
 
+def _log_tail(log: Path) -> str:
+    with log.open("rb") as handle:
+        handle.seek(max(0, log.stat().st_size - 16384))
+        return handle.read().decode(errors="replace")
+
+
 def _read_log(path: Path) -> str:
-    """The text so far. Renode replaces this file as it starts, so it can vanish between two checks."""
+    """The text so far, up to a limit. Renode replaces this file as it starts, so it can vanish."""
     try:
-        return path.read_text(errors="replace")
+        with path.open(errors="replace") as handle:
+            return handle.read(_MAX_LOG_BYTES)
     except FileNotFoundError:
         return ""
 
@@ -245,6 +307,11 @@ def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
                 peripherals: str | None, skip: FaultSkip | None = None) -> RunResult:
     work_dir.mkdir(parents=True, exist_ok=True)
     uart_log, sim_log, renode_log = (work_dir / n for n in ("uart.log", "sim.log", "renode.log"))
+    if skip:
+        (work_dir / "models").mkdir(exist_ok=True)
+        (work_dir / "models" / "FaultArm.cs").write_text(_FAULT_MODEL.format(
+            at=skip.at, resume=skip.resume, marker=skip.marker, after_ms=int(skip.after_ms)))
+        peripherals = "vl_fault: VirtuLab.FaultArm\n" + (peripherals or "")
     for f in (uart_log, sim_log):
         f.unlink(missing_ok=True)
     script = _renode_script(board, elf.resolve(), work_dir, peripherals, uart_log, sim_log, skip)
@@ -265,7 +332,8 @@ def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
                 failure = _renode_error(renode_log)
                 if failure:
                     raise VirtulabError(f"Renode could not set up the virtual board:\n{failure}")
-                if time.monotonic() - start > timeout:
+                flooded = any(p.exists() and p.stat().st_size > _MAX_LOG_BYTES for p in (renode_log, uart_log))
+                if flooded or time.monotonic() - start > timeout:
                     timed_out = True
                     timeout_pc = _read_pc(proc, renode_log)
                     break
@@ -291,7 +359,7 @@ def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
         exit_code = None if timed_out else (proc.returncode or 1)
         if not timed_out:
             # Renode stopped without the firmware exiting: surface why.
-            tail = renode_log.read_text(errors="replace").strip().splitlines()[-20:]
+            tail = _log_tail(renode_log).strip().splitlines()[-20:]
             output += "\n[renode exited unexpectedly]\n" + "\n".join(tail)
     return RunResult(exit_code=exit_code, timed_out=timed_out, output=output,
                      duration=duration, sim_commands=sim_commands,

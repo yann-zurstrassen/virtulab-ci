@@ -1,5 +1,6 @@
 """Peripherals defined in virtulab.yml, analog inputs, and sensor input on a timeline."""
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ from pathlib import Path
 from virtulab import VirtulabError, config, peripherals
 from virtulab.check import check
 from virtulab.cli import main
+from virtulab.scenarios import Case, _fault_verdict, _verdict, parse_cases
 from tests.test_project import HAVE_RENODE, HAVE_TOOLS
 
 REPO = Path(__file__).resolve().parent.parent
@@ -20,6 +22,19 @@ def cfg(**extra):
 
 
 class ConfigTest(unittest.TestCase):
+    def test_scenario_verdicts_keep_a_crash_apart_from_a_failure(self):
+        case = Case("c", [], None, ["HEATER=OFF"], ["HEATER=ON"])
+        self.assertEqual(_fault_verdict(case, "HEATER=OFF", 0), "held")
+        self.assertEqual(_fault_verdict(case, "HEATER=ON", 0), "broken")
+        self.assertEqual(_fault_verdict(case, "", 0), "no_result")
+        self.assertEqual(_fault_verdict(case, "", 250), "no_result")
+        self.assertEqual(_verdict(case, "", None), "no_result")
+
+    def test_a_case_with_faults_must_name_what_must_not_happen(self):
+        c = cfg(tests={"scenarios": {"sources": ["a.c"], "cases": {"x": {"expect": "OK", "faults": ["1ms"]}}}})
+        with self.assertRaises(VirtulabError):
+            parse_cases(c)
+
     def test_bad_definitions_are_explained(self):
         for bad in ({"bus": "i2c1"},
                     {**TANK, "registers": []},
@@ -116,6 +131,61 @@ class EmulationTest(unittest.TestCase):
         path = root / "include/oven.h"
         path.write_text(path.read_text().replace("#define OVEN_LIMIT_DEC 1800", "#define OVEN_LIMIT_DEC 2000"))
         self.assertEqual(self.run_only_unit(root), 1)
+
+    def test_a_fault_during_a_sensor_scenario_is_caught_at_its_source(self):
+        root = self.project("oven-controller")
+        path = root / "virtulab.yml"
+        path.write_text(path.read_text().replace('cflags: "-std=c99 -Wall -Wextra"',
+                                                 'cflags: "-std=c99 -Wall -Wextra -DOVEN_HARDENED=0"'))
+        self.assertEqual(main(["run", "-C", str(root), "--only", "fault"]), 1)
+        sarif = json.loads((root / ".virtulab" / "evidence" / "results.sarif").read_text())
+        files = {r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+                 for r in sarif["runs"][0]["results"] if r["ruleId"] == "VL-FAULT"}
+        self.assertEqual(files, {"src/oven.c"})
+
+    def test_the_hardened_oven_survives_the_sweep(self):
+        self.assertEqual(main(["run", "-C", str(self.project("oven-controller")), "--only", "fault"]), 0)
+
+    def test_a_renode_sweep_that_finds_nothing_to_attack_fails(self):
+        root = self.project("oven-controller")
+        path = root / "virtulab.yml"
+        path.write_text(path.read_text().replace("target: src/oven.c", "target: src/ovne.c"))
+        self.assertEqual(main(["run", "-C", str(root), "--only", "fault"]), 1)
+        self.assertIn("inconclusive", (root / ".virtulab" / "report.md").read_text())
+
+    def run_scenarios(self, root: Path) -> tuple[int, dict]:
+        code = main(["run", "-C", str(root), "--only", "scenarios"])
+        return code, json.loads((root / ".virtulab" / "evidence" / "evidence.json").read_text())
+
+    def plain_controller(self) -> Path:
+        root = self.project("oven-controller")
+        path = root / "virtulab.yml"
+        path.write_text(path.read_text().replace('cflags: "-std=c99 -Wall -Wextra"',
+                                                 'cflags: "-std=c99 -Wall -Wextra -DCONTROLLER_HARDENED=0"'))
+        return root
+
+    def test_the_hardened_controller_never_leaves_the_heater_on(self):
+        code, record = self.run_scenarios(self.project("oven-controller"))
+        self.assertEqual(code, 0)
+        self.assertEqual(record["checks"][0]["data"]["bypass"], 0)
+        self.assertGreater(record["checks"][0]["data"]["swept"], 0)
+
+    def test_a_moment_only_bug_needs_a_timed_fault(self):
+        root = self.plain_controller()
+        code, _ = self.run_scenarios(root)
+        self.assertEqual(code, 1)
+        sarif = json.loads((root / ".virtulab" / "evidence" / "results.sarif").read_text())
+        texts = [r["message"]["text"] for r in sarif["runs"][0]["results"] if r["ruleId"] == "VL-FAULT"]
+        timed = {t.split("`")[1] for t in texts if "after 0 ms" not in t}
+        untimed = {t.split("`")[1] for t in texts if "after 0 ms" in t}
+        self.assertTrue(timed - untimed, "timed faults must reach what an untimed sweep cannot")
+
+    def test_a_scenario_that_goes_wrong_without_any_fault_fails(self):
+        root = self.project("oven-controller")
+        path = root / "virtulab.yml"
+        path.write_text(path.read_text().replace("stimulus_file: inputs/normal_warmup.csv\n        expect: HEATER=ON",
+                                                 "stimulus_file: inputs/normal_warmup.csv\n        expect: HEATER=OFF"))
+        self.assertEqual(self.run_scenarios(root)[0], 1)
 
     def test_runs_give_the_same_test_results(self):
         root = self.project("oven-controller")

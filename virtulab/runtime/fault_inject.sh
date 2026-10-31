@@ -169,12 +169,19 @@ list_instructions > "$work/instructions" || inconclusive "the instructions of $s
 [ -s "$work/instructions" ] || inconclusive "no instructions found for $source_file (does the path match the build?)"
 printf '%-12s %-26s %-28s %-9s %s\n' "tampered" "function+offset" "instruction" "original" "faulted"
 
-swept=0 applied_count=0 bypass=0 denied=0 crashed=0 not_reached=0
+swept=0 applied_count=0 bypass=0 denied=0 crashed=0 not_reached=0 retried=0
 while read -r addr size name offset text; do
     if [ -n "$only_address" ] && [ "$((0x$addr))" -ne "$((only_address))" ]; then continue; fi
     if [ -n "$only_functions" ] && [[ "$only_functions" != *",$name,"* ]]; then continue; fi
     resume=$(printf '0x%x' $((0x$addr + size)))
     read -r result applied <<< "$(run_faulted "0x$addr" "$resume")"
+    # A run where neither gdb nor the firmware finished says nothing about the firmware. On a
+    # busy machine that can be one slow start, so try again before calling the sweep broken.
+    for _ in 1 2 3; do
+        [ "$applied" = no ] && [ "$result" != denied ] || break
+        retried=$((retried + 1))
+        read -r result applied <<< "$(run_faulted "0x$addr" "$resume")"
+    done
     swept=$((swept + 1))
     if [ "$verbose" = yes ]; then printf 'sweep 0x%s %s+%s applied=%s result=%s\n' "$addr" "$name" "$offset" "$applied" "$result"; fi
     if [ "$applied" = no ]; then
@@ -191,7 +198,7 @@ while read -r addr size name offset text; do
     esac
 done < "$work/instructions"
 
-echo "swept=$swept applied=$applied_count not_reached=$not_reached denied=$denied crashed_or_hung=$crashed bypass=$bypass"
+echo "swept=$swept applied=$applied_count not_reached=$not_reached denied=$denied crashed_or_hung=$crashed bypass=$bypass retried=$retried"
 [ "$applied_count" -gt 0 ] || inconclusive "no instruction of $source_file was reached by the probe"
 if [ "$bypass" -gt 0 ]; then
     verdict="auth bypass reachable by single instruction skip"

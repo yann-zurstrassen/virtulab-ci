@@ -7,6 +7,11 @@
 #define OVEN_LIMIT_DEC 1800 /* 180.0 degrees */
 #define OVEN_OPEN_COUNTS 4000u /* the pin reads near the rail when the sensor wire breaks */
 
+/* 1 reads the sensor twice, so one skipped instruction cannot hide an overheat. */
+#ifndef OVEN_HARDENED
+#define OVEN_HARDENED 1
+#endif
+
 typedef enum { OVEN_HEATING, OVEN_OVERHEAT, OVEN_SENSOR_FAULT } oven_state_t;
 
 void oven_init(void);

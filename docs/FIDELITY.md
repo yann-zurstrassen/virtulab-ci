@@ -128,7 +128,7 @@ These hold for emulators in general and for this setup in particular. None of th
 | **Clock tree and power** | The system controller reports a fixed 12.5 MHz SYSCLK. PLL lock, brown-out, sleep modes and wake-up times are not realistic | Clock-dependent peripherals (baud rates, ADC sample rates) and low-power paths need hardware |
 | **DMA contention** | No DMA controller in this machine | Bus contention and DMA/CPU races are invisible |
 | **Peripheral errata and analog behaviour** | Models follow the documented register interface, not silicon errata, noise, or electrical limits | Sensor drift, ADC noise, signal integrity and EMC are out of scope |
-| **Fault injection** | Results belong to one build: the same source gave different results under different compiler flags, so sweep the flags you ship. The skip sweep removes one instruction in software. A physical glitch can flip bits, corrupt multiple instructions, or hit the pipeline differently | A clean sweep is evidence, not proof. See below |
+| **Fault injection** | Results belong to one build: the same source gave different results under different compiler flags, so sweep the flags you ship. The skip sweep removes one instruction in software. A physical glitch can flip bits, corrupt multiple instructions, or hit the pipeline differently | A clean sweep is evidence, not proof. Renode sweeps run on its Cortex-M4 model, and QEMU sweeps on the board's QEMU model. See below |
 | **Fuzzing** | `make fuzz` runs the parser on the host with sanitizers. Host word size, alignment and libc differ from the target | It finds logic and memory bugs in the parser code, not target-specific ones |
 
 ## Validate on real hardware

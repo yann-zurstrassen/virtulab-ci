@@ -133,7 +133,7 @@ A **board check** catches impossible setups before anything runs: a sensor wired
 - **Own builds are supported, but unproven on real firmware.** `build.command` and fault `functions` work on test projects only. No customer or open-source project has been run end to end. *This is the biggest gap relative to the pitch.* Market reasoning is in [`MARKET.md`](MARKET.md).
 - **The generated GitHub workflow has not run on GitHub yet**, and the one-line CI action needs a published Docker image before outsiders can use it.
 - **Fuzzing runs on the host**, on the parser logic, not on the virtual device.
-- **Fault injection tests one kind of attack** (skipping a single instruction, first execution only), and only on QEMU boards, so it does not combine with sensors.
+- **Fault injection tests one kind of attack** (skipping a single instruction, first execution only).
 - **Coverage is line and branch only, no MC/DC**, which safety standards ask for.
 - **No sensor model has been compared with real hardware.** They are checked against documents, not silicon.
 - Not started: importing chip definitions, debugging and flashing.

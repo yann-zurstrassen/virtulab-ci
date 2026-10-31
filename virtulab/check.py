@@ -84,7 +84,10 @@ def _tool(name: str, board: str) -> str | None:
 
 def tool_status(test: str, board: str) -> list[str]:
     """Names of the host tools a test needs that are not installed."""
-    return [n for n in get_test(test).needs if _tool(n, board) is None]
+    needs = get_test(test).needs
+    if test == "fault" and BOARDS[board].emulator == "renode":
+        needs = ("arm-none-eabi-gcc", "emulator")  # the sweep drives Renode itself, no gdb
+    return [n for n in needs if _tool(n, board) is None]
 
 
 def _matches(root: Path, patterns: list[str]) -> list[str]:
@@ -92,6 +95,34 @@ def _matches(root: Path, patterns: list[str]) -> list[str]:
     for pattern in patterns:
         found += glob.glob(str(root / pattern), recursive=True)
     return found
+
+
+def _check_inputs(res: CheckResult, cfg: ProjectConfig, root: Path | None, label: str) -> None:
+    """Every input step must name a real input of this project."""
+    try:
+        steps = all_stimulus(cfg, root)
+    except VirtulabError as exc:
+        res.add(ERROR, label, str(exc))
+        steps = []
+    for s in steps:
+        if s.module in cfg.analog:
+            if s.prop not in cfg.analog[s.module].inputs:
+                res.add(ERROR, label, f"{s.module} has no input '{s.prop}'")
+                break
+            continue
+        if s.module not in cfg.modules and s.module not in cfg.peripherals:
+            res.add(ERROR, label, f"'{s.module}' is not a module or peripheral of this project")
+            break
+        if s.module in cfg.peripherals and s.prop not in {r.name for r in cfg.peripherals[s.module].registers}:
+            res.add(ERROR, label, f"{s.module} has no register '{s.prop}'")
+            break
+        if s.module in cfg.modules and s.prop not in get_module(cfg.modules[s.module].model).sim:
+            res.add(ERROR, label, f"{cfg.modules[s.module].model} has no input '{s.prop}'. "
+                                       f"Available: {', '.join(get_module(cfg.modules[s.module].model).sim)}")
+            break
+    else:
+        if steps:
+            res.add(OK, label, f"{len(steps)} sensor input step(s) on the virtual clock")
 
 
 def check(cfg: ProjectConfig, root: Path | None = None, tools: bool | str = True) -> CheckResult:
@@ -193,40 +224,43 @@ def check(cfg: ProjectConfig, root: Path | None = None, tools: bool | str = True
         else:
             res.add(WARN, a.name, f"ADC with {len(a.inputs)} input(s), {a.vref:g} V reference. Voltages are ideal: "
                                   "no noise, sampling or conversion time")
-    try:
-        steps = all_stimulus(cfg, root)
-    except VirtulabError as exc:
-        res.add(ERROR, "stimulus", str(exc))
-        steps = []
-    for s in steps:
-        if s.module in cfg.analog:
-            if s.prop not in cfg.analog[s.module].inputs:
-                res.add(ERROR, "stimulus", f"{s.module} has no input '{s.prop}'")
-                break
-            continue
-        if s.module not in cfg.modules and s.module not in cfg.peripherals:
-            res.add(ERROR, "stimulus", f"'{s.module}' is not a module or peripheral of this project")
-            break
-        if s.module in cfg.peripherals and s.prop not in {r.name for r in cfg.peripherals[s.module].registers}:
-            res.add(ERROR, "stimulus", f"{s.module} has no register '{s.prop}'")
-            break
-        if s.module in cfg.modules and s.prop not in get_module(cfg.modules[s.module].model).sim:
-            res.add(ERROR, "stimulus", f"{cfg.modules[s.module].model} has no input '{s.prop}'. "
-                                       f"Available: {', '.join(get_module(cfg.modules[s.module].model).sim)}")
-            break
-    else:
-        if steps:
-            res.add(OK, "stimulus", f"{len(steps)} sensor input step(s) on the virtual clock")
+    _check_inputs(res, cfg, root, "stimulus")
+    for rule in cfg.rules:
+        try:
+            parse_pin(rule.pin)
+            if "." in rule.target:
+                module = rule.target.partition(".")[0]
+                if module not in cfg.modules and module not in cfg.peripherals and module not in cfg.analog:
+                    raise VirtulabError(f"'{module}' is not a module or peripheral of this project")
+            else:
+                parse_pin(rule.target)
+        except VirtulabError as exc:
+            res.add(ERROR, "rules", str(exc))
+    if cfg.rules and not buses:
+        res.add(ERROR, "rules", f"Rules need a board that models pins, not {cfg.board}.")
+    for path in [*cfg.models, *([cfg.repl] if cfg.repl else [])]:
+        if root is not None and not (root / path).is_file():
+            res.add(ERROR, "models", f"'{path}' not found")
+    if cfg.models or cfg.repl:
+        res.add(WARN, "models", "your own Renode models: VirtuLab loads them as they are")
 
     # Tests
     for tid in cfg.tests:
         t = get_test(tid)
-        if t.emulated_boards_only and board.emulator != "qemu":
-            res.add(ERROR, tid, f"{t.title} needs a QEMU board, {cfg.board} runs on Renode")
-            continue
         for opt in t.options:
             if opt.required and not cfg.tests[tid].get(opt.name) and not opt.default:
                 res.add(ERROR, tid, f"option '{opt.name}' is required")
+        if tid == "scenarios":
+            from .scenarios import parse_cases, with_case
+            if board.emulator != "renode":
+                res.add(ERROR, tid, f"{t.title} need a board that can carry inputs, not {cfg.board}")
+                continue
+            try:
+                for case in parse_cases(cfg):
+                    _check_inputs(res, with_case(cfg, case), root, f"{tid}.{case.name}")
+            except VirtulabError as exc:
+                res.add(ERROR, tid, str(exc))
+                continue
         prebuilt = tid == "fault" and cfg.tests[tid].get("elf")
         if root is not None and tid in ("fuzz", "fault") and not prebuilt:
             key = "harness" if tid == "fuzz" else "probe"

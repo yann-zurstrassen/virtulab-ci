@@ -102,6 +102,19 @@ The "Largest symbol size changes" table can list `__preinit_array_start` with a 
 - **Time zero** values are monitor commands, so they apply before the firmware starts. Later values apply on a 1 ms virtual tick, so finer timing than 1 ms is rounded up.
 - **Failed model compilation** is now reported at once, not after the timeout.
 
+## Physical scenarios and timed faults (2026-10-31)
+
+- **One image, many cases.** Scenarios change the inputs, never the build, so every result is about the same firmware.
+- **`faults` requires `forbid`.** Only a seen forbidden outcome is a failure. No answer is a crash, which is counted and reported, and is not called safe.
+- **Time is virtual and approximate:** a fault fires at the first execution of the instruction at or after the given time, so a list of times around the event is needed.
+- **Cost:** cases with faults × times × instructions, at about 2 to 5 s a run. Keep `functions` narrow.
+
+## Fault injection on Renode (2026-10-31)
+
+- **Each skip gets a fresh Renode process,** with a one-shot hook, so a fault cannot leak into the next run. It costs about 4.5 s per skip before parallelism: 41 skips took about 110 s. Keep sweeps narrow with `functions`.
+- **Same rules as QEMU:** a run with no fault must be clean, no target or no applied fault is inconclusive and fails, and crashes are reported but count as neither safe nor bypass.
+- **A log-file race** showed up only under parallel runs: Renode replaces its UART log at start-up. It crashed about 1 run in 3 before the fix, and 8 of 8 passed after it.
+
 ## Review fixes (2026-10-30)
 
 - **Checks fail closed.** A fault sweep that applied no fault is `inconclusive` and fails. Zero tests fails. A budget that cannot be compared fails, except when there is no ref, or the baseline lacks these sources because the code is new.

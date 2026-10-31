@@ -56,7 +56,7 @@ docker run --rm -v "$PWD:/workspace" ghcr.io/yann-zurstrassen/virtulab-ci:1 run
 | Board | 9 (`virtulab catalog`). Only `stm32f4_discovery` (Renode) can carry sensors; the 8 QEMU boards run the CPU only |
 | Protocol | I²C, SPI, UART. SPI devices share a bus, each with its own chip-select pin (`cs:`); a UART carries one device in the emulator |
 | Sensor | 11 today, each with a datasheet map (`virtulab datasheet NAME`, or the link on each card in the setup page). **I²C:** TMP108 temperature, BMP180 pressure (Renode's model), INA219 current and power, MPU-6050 motion, SHT31 temperature and humidity. **SPI:** ADXL345 accelerometer, MAX31855 thermocouple, W25Q128 flash. **UART:** NMEA GPS, AT-command cellular modem, Modbus RTU transmitter. Each can be made to fail on purpose (no answer, bad checksum, open circuit, busy flash) |
-| Tests | unit, footprint, coverage, fuzz, fault injection. Fault injection needs a QEMU board |
+| Tests | unit, footprint, coverage, fuzz, fault injection |
 
 The sample firmware `init` can create (`--template starter`) is built to pass on its first run. Its sensor drivers are written for `i2c1`, `spi1` and the UARTs `usart1`, `usart3` and `uart4`; the chip-select pin is yours to choose. A full recorded run is in [`docs/demo-run.txt`](docs/demo-run.txt). The setup page is local only (127.0.0.1, random token).
 
@@ -89,7 +89,7 @@ tests:
     functions: [verify_pin]
 ```
 
-[`examples/secure-boot`](examples/secure-boot) is a full CMake project with no VirtuLab code in it. The ELF must exit through semihosting and print Unity-style results. Coverage is skipped in this mode for now, and fault injection still needs a QEMU board.
+[`examples/secure-boot`](examples/secure-boot) is a full CMake project with no VirtuLab code in it. The ELF must exit through semihosting and print Unity-style results. Coverage is skipped in this mode for now.
 
 ## 🌡️ Your own peripherals and sensor input, no analog rig
 
@@ -113,7 +113,28 @@ stimulus_file: inputs/overheat.csv    # time_ms,adc1.oven_temp
 
 Input runs on the emulator's virtual clock, so a run gives the same result every time. Catalog sensors take input the same way (`temp.Temperature`). See [`examples/oven-controller`](examples/oven-controller) and [`examples/custom-sensor`](examples/custom-sensor).
 
-This replaces the software side of those bench tests. Voltages are ideal, with no noise, sampling or conversion time, so analog front ends, ADC accuracy and electrical faults stay on the real bench. Custom peripherals are I²C for now, and analog inputs are polled, single-channel conversions on `stm32f4_discovery`.
+This replaces the software side of those bench tests. Voltages are ideal, with no noise, sampling or conversion time, so analog front ends, ADC accuracy and electrical faults stay on the real bench. Custom peripherals are I²C for now, and analog inputs are polled, single-channel conversions on `stm32f4_discovery`. Fault injection runs during these scenarios too, so you can ask whether one skipped instruction can hide an overheat.
+
+## 🔥 Faults at the worst moment
+
+One firmware build, many physical situations. Each case says what must and must not happen, and `faults` skips each target instruction at the first execution after a chosen time, so a fault can land just as a spike arrives:
+
+```yaml
+tests:
+  scenarios:
+    sources: [scenario/main.c, src/controller.c, src/oven.c, src/clock.c]
+    target: src/controller.c
+    functions: [controller_step]
+    cases:
+      normal_warmup: { stimulus_file: inputs/normal_warmup.csv, expect: HEATER=ON }
+      sudden_spike:
+        stimulus_file: inputs/sudden_spike.csv
+        expect: HEATER=OFF
+        forbid: HEATER=ON
+        faults: [200ms, 202ms, 204ms]
+```
+
+A run that crashes during a fault is reported apart from one that reaches the forbidden outcome, and is not treated as safe. Input is scripted for now, so the simulated world does not react to the firmware. See [`examples/oven-controller`](examples/oven-controller).
 
 ## 🎯 Who it's for
 

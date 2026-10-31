@@ -178,9 +178,9 @@ class CheckTest(unittest.TestCase):
             "a": {"model": "adxl345", "bus": "spi1", "cs": "A4"}})
         self.assertIn("not a pin name", res.to_text())
 
-    def test_fault_injection_needs_a_qemu_board(self):
+    def test_fault_injection_works_on_every_emulator(self):
         res = self.check(board="stm32f4_discovery", tests={"unit": {}, "fault": {}})
-        self.assertIn("needs a QEMU board", res.to_text())
+        self.assertNotIn("needs a QEMU board", " ".join(f.message for f in res.findings))
 
     def test_missing_files_are_reported_with_a_root(self):
         cfg = config.from_dict({"board": "lm3s6965evb", "tests": {"fuzz": {}}})
@@ -210,7 +210,7 @@ class CatalogTest(unittest.TestCase):
         for board in info["boards"]:
             for protocol in board["protocols"]:
                 self.assertIn(protocol, catalog.PROTOCOLS)
-        self.assertEqual({t["id"] for t in info["tests"]}, {"unit", "footprint", "coverage", "fuzz", "fault"})
+        self.assertEqual({t["id"] for t in info["tests"]}, {"unit", "footprint", "coverage", "fuzz", "fault", "scenarios"})
 
     def test_ci_files_reference_the_one_line_action(self):
         cfg = config.from_dict({"tests": {"unit": {}, "fuzz": {}}})

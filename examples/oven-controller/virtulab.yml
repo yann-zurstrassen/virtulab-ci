@@ -3,7 +3,7 @@
 version: 1
 board: stm32f4_discovery
 build:
-  sources: [src/*.c, test/*.c]
+  sources: [src/clock.c, src/oven.c, test/*.c]
   include: [include]
   cflags: "-std=c99 -Wall -Wextra"
 timeout: 30s
@@ -14,3 +14,29 @@ analog:
 stimulus_file: inputs/overheat.csv
 tests:
   unit: {}
+  fault:
+    probe: [fault/probe_overheat.c]
+    sources: [src/oven.c]
+    target: src/oven.c
+    functions: [oven_state, oven_read_counts, oven_counts_to_decidegrees, oven_classify]
+    include: [include]
+  scenarios:
+    sources: [scenario/main.c, src/controller.c, src/oven.c, src/clock.c]
+    include: [include]
+    target: src/controller.c
+    functions: [controller_step]
+    cases:
+      normal_warmup:
+        stimulus_file: inputs/normal_warmup.csv
+        expect: HEATER=ON
+      slow_overheat:
+        stimulus_file: inputs/slow_overheat.csv
+        expect: HEATER=OFF
+      sudden_spike:
+        stimulus_file: inputs/sudden_spike.csv
+        expect: HEATER=OFF
+        forbid: HEATER=ON
+        faults: [0ms, 200ms, 202ms, 204ms]   # 0ms is an untimed sweep, the rest strike as the spike lands
+      broken_wire:
+        stimulus_file: inputs/broken_wire.csv
+        expect: HEATER=OFF

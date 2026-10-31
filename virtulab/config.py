@@ -18,7 +18,8 @@ from .yamlite import Hex
 CONFIG_NAMES = ("virtulab.yml", "virtulab.yaml")
 SCHEMA_VERSION = 1
 
-_TOP_KEYS = ("version", "board", "build", "timeout", "modules", "peripherals", "analog", "stimulus", "stimulus_file",
+_TOP_KEYS = ("version", "board", "build", "timeout", "modules", "peripherals", "analog", "rules", "stimulus", "stimulus_file",
+             "models", "repl",
              "tests", "ci")
 _BUILD_KEYS = ("sources", "include", "cflags", "ldflags", "linker_script", "runtime", "command", "elf")
 _MODULE_KEYS = ("model", "bus", "address", "cs")
@@ -52,6 +53,10 @@ class ProjectConfig:
     peripherals: dict[str, custom.Peripheral] = field(default_factory=dict)
     analog: dict[str, custom.AnalogBlock] = field(default_factory=dict)
     raw_analog: dict = field(default_factory=dict)
+    rules: list[custom.Rule] = field(default_factory=list)
+    raw_rules: list = field(default_factory=list)
+    models: list[str] = field(default_factory=list)  # the user's own Renode models (.cs)
+    repl: str | None = None  # the user's own Renode platform lines
     stimulus: list[custom.Stimulus] = field(default_factory=list)
     stimulus_file: str | None = None
     raw_peripherals: dict = field(default_factory=dict)
@@ -89,6 +94,12 @@ class ProjectConfig:
             data["peripherals"] = self.raw_peripherals
         if self.raw_analog:
             data["analog"] = self.raw_analog
+        if self.raw_rules:
+            data["rules"] = self.raw_rules
+        if self.models:
+            data["models"] = self.models
+        if self.repl:
+            data["repl"] = self.repl
         if self.raw_stimulus:
             data["stimulus"] = self.raw_stimulus
         if self.stimulus_file:
@@ -195,6 +206,10 @@ def from_dict(data: dict) -> ProjectConfig:
     cfg.raw_analog = _expect("analog", data.get("analog"), dict) or {}
     for name, spec in cfg.raw_analog.items():
         cfg.analog[str(name)] = custom.parse_analog(str(name), _expect(f"analog '{name}'", spec, dict) or {})
+    cfg.raw_rules = _expect("rules", data.get("rules"), list) or []
+    cfg.rules = custom.parse_rules(cfg.raw_rules)
+    cfg.models = _str_list("models", data.get("models"))
+    cfg.repl = data.get("repl") or None
     cfg.raw_stimulus = _expect("stimulus", data.get("stimulus"), list) or []
     cfg.stimulus = custom.parse_stimulus(cfg.raw_stimulus)
     cfg.stimulus_file = data.get("stimulus_file") or None
@@ -289,12 +304,36 @@ def sim_path(cfg: ProjectConfig, name: str) -> str:
     return f"sysbus.{m.bus}.{m.name}"
 
 
+def all_stimulus_of(stimulus: list, stimulus_file: str | None, root: Path | None) -> list[custom.Stimulus]:
+    steps = list(stimulus)
+    if stimulus_file and root is not None:
+        steps += custom.read_trace(root / stimulus_file)
+    return sorted(steps, key=lambda s: s.at_ms)
+
+
 def all_stimulus(cfg: ProjectConfig, root: Path | None) -> list[custom.Stimulus]:
     """The timeline and the recorded trace together, in time order."""
     steps = list(cfg.stimulus)
     if cfg.stimulus_file and root is not None:
         steps += custom.read_trace(root / cfg.stimulus_file)
     return sorted(steps, key=lambda s: s.at_ms)
+
+
+def _target(cfg: ProjectConfig, target: str) -> tuple[str, str]:
+    """(monitor path, input name) of a rule's target. A pin is (port, its number)."""
+    if "." in target:
+        module, _, name = target.partition(".")
+        return sim_path(cfg, module), name
+    port, pin = parse_pin(target)
+    return f"sysbus.gpioPort{port}", str(pin)
+
+
+def rule_rows(cfg: ProjectConfig) -> list[tuple]:
+    rows = []
+    for r in cfg.rules:
+        port, pin = parse_pin(r.pin)
+        rows.append((f"sysbus.gpioPort{port}", pin, r.level, r.hold_ms, *_target(cfg, r.target), r.value))
+    return rows
 
 
 def generated_models(cfg: ProjectConfig, root: Path | None) -> dict[str, str]:
@@ -304,6 +343,10 @@ def generated_models(cfg: ProjectConfig, root: Path | None) -> dict[str, str]:
     timed = [(s.at_ms, sim_path(cfg, s.module), s.prop, s.value) for s in all_stimulus(cfg, root) if s.at_ms > 0]
     if timed:
         files["Stimulus.cs"] = custom.stimulus_source(timed)
+    if cfg.rules:
+        files["Rules.cs"] = custom.rules_source(rule_rows(cfg))
+    for path in cfg.models:
+        files[Path(path).name] = (root / path).read_text() if root is not None else ""
     return files
 
 
@@ -351,6 +394,10 @@ def renode_repl(cfg: ProjectConfig, root: Path | None = None) -> str | None:
     steps = all_stimulus(cfg, root)
     if any(s.at_ms > 0 for s in steps):
         lines.append("vl_stimulus: VirtuLab.Stimulus")
+    if cfg.rules:
+        lines.append("vl_rules: VirtuLab.Rules")
+    if cfg.repl and root is not None:
+        lines += (root / cfg.repl).read_text().splitlines()
     monitor += [f"{sim_path(cfg, s.module)} {s.prop} {s.value!r}" for s in steps if s.at_ms == 0]
     if not lines:
         return None

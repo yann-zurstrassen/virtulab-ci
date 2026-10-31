@@ -45,6 +45,24 @@ bus.WriteDoubleWord({ack:#x}, status)
 """
 
 
+# Runs each time the CPU reaches the attacked instruction: resume past it, once.
+_SKIP_HOOK = """\
+import os
+if not os.path.exists({marker!r}) and machine.LocalTimeSource.ElapsedVirtualTime.TotalMilliseconds >= {after_ms!r}:
+    open({marker!r}, 'w').close()
+    self.PC = type(self.PC).Create({resume:#x}, 32)
+"""
+
+
+@dataclass
+class FaultSkip:
+    """Skip one instruction: at `at`, resume at `resume`, and leave `marker` as proof it happened."""
+    at: int
+    resume: int
+    marker: Path
+    after_ms: float = 0.0  # first execution at or after this virtual time
+
+
 @dataclass
 class RunResult:
     exit_code: int | None  # None when the run timed out
@@ -57,9 +75,9 @@ class RunResult:
 
 
 def run(board: Board, elf: Path, timeout: float, work_dir: Path,
-        peripherals: str | None = None) -> RunResult:
+        peripherals: str | None = None, skip: FaultSkip | None = None) -> RunResult:
     if board.emulator == "renode":
-        return _run_renode(board, elf, timeout, work_dir, peripherals)
+        return _run_renode(board, elf, timeout, work_dir, peripherals, skip)
     if peripherals:
         raise VirtulabError(
             f"'{board.name}' runs on QEMU, which cannot add peripherals. "
@@ -108,9 +126,9 @@ def _run_qemu(board: Board, elf: Path, timeout: float) -> RunResult:
 
 
 def _renode_script(board: Board, elf: Path, work_dir: Path, peripherals: str | None,
-                   uart_log: Path, sim_log: Path) -> Path:
+                   uart_log: Path, sim_log: Path, skip: FaultSkip | None = None) -> Path:
     lines = ["using sysbus"]
-    if peripherals and "VirtuLab." in peripherals:
+    if peripherals and ("VirtuLab." in peripherals or (work_dir / "models").is_dir()):
         # Compile the VirtuLab device library (datasheet-accurate models) into Renode.
         lines += [f"include @{model}" for model in sorted(DEVICES_DIR.glob("*.cs"))]
         lines += [f"include @{model}" for model in sorted((work_dir / "models").glob("*.cs"))]
@@ -133,6 +151,10 @@ def _renode_script(board: Board, elf: Path, work_dir: Path, peripherals: str | N
         hook = work_dir / "vl_sim_hook.py"
         hook.write_text(_SIM_HOOK.format(log=str(sim_log), ack=symbols["vl_sim_ack"]))
         lines.append(f"cpu AddHook {symbols['vl_sim_hook']:#x} \"execfile('{hook}')\"")
+    if skip:
+        hook = work_dir / "vl_skip_hook.py"
+        hook.write_text(_SKIP_HOOK.format(resume=skip.resume, marker=str(skip.marker), after_ms=skip.after_ms))
+        lines.append(f"cpu AddHook {skip.at:#x} \"execfile('{hook}')\"")
     lines.append("start")
     script = work_dir / "run.resc"
     script.write_text("\n".join(lines) + "\n")
@@ -211,13 +233,21 @@ def _read_pc(proc: subprocess.Popen, log: Path) -> int | None:
     return None
 
 
+def _read_log(path: Path) -> str:
+    """The text so far. Renode replaces this file as it starts, so it can vanish between two checks."""
+    try:
+        return path.read_text(errors="replace")
+    except FileNotFoundError:
+        return ""
+
+
 def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
-                peripherals: str | None) -> RunResult:
+                peripherals: str | None, skip: FaultSkip | None = None) -> RunResult:
     work_dir.mkdir(parents=True, exist_ok=True)
     uart_log, sim_log, renode_log = (work_dir / n for n in ("uart.log", "sim.log", "renode.log"))
     for f in (uart_log, sim_log):
         f.unlink(missing_ok=True)
-    script = _renode_script(board, elf.resolve(), work_dir, peripherals, uart_log, sim_log)
+    script = _renode_script(board, elf.resolve(), work_dir, peripherals, uart_log, sim_log, skip)
 
     start = time.monotonic()
     with open(renode_log, "wb") as log:
@@ -228,7 +258,7 @@ def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
         exit_match, timed_out, timeout_pc = None, False, None
         try:
             while True:
-                text = uart_log.read_text(errors="replace") if uart_log.exists() else ""
+                text = _read_log(uart_log)
                 exit_match = _EXIT_SENTINEL.search(text)
                 if exit_match or proc.poll() is not None:
                     break
@@ -251,7 +281,7 @@ def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
                 proc.wait()
     duration = time.monotonic() - start
 
-    text = uart_log.read_text(errors="replace") if uart_log.exists() else ""
+    text = _read_log(uart_log)
     sim_commands = sim_log.read_text().splitlines() if sim_log.exists() else []
     if exit_match:
         output = text[:exit_match.start()].rstrip("\n")

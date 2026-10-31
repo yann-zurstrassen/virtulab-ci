@@ -5,11 +5,13 @@ and logs, and the others add rows to the "checks" table of the sticky comment.
 """
 
 import glob
+import os
 import re
 import shlex
 import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,7 +20,7 @@ from .boards import BOARDS
 from .build import resolve_sources
 from .catalog import TESTS, get_test
 from .check import _tool, check
-from .config import ProjectConfig, option, renode_repl
+from .config import ProjectConfig, generated_models, option, renode_repl
 from .report import BUDGET_EXCEEDED, PASSED, Outcome, fmt_delta
 
 PASS, FAIL, SKIP = "pass", "fail", "skip"
@@ -282,6 +284,22 @@ def run_fuzz(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
 # ---------------------------------------------------------------------------
 # fault injection
 
+_RENODE_RUN_BYTES = 3 * 1024 ** 3  # about 1.2 GB running, and up to about 2.4 GB at the peak
+
+
+def _memory_limit() -> int:
+    """Memory this process may use: the container's limit when there is one, or the machine's."""
+    physical = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    try:
+        text = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+    except OSError:
+        return physical
+    return min(int(text), physical) if text.isdigit() else physical
+
+
+# Each run is a full Renode process, so memory sets the limit as much as the core count.
+RENODE_WORKERS = max(1, min((os.cpu_count() or 2) // 2, _memory_limit() // _RENODE_RUN_BYTES))
+_RENODE_RUN_SECONDS = 45.0  # includes Renode's start-up, with sweeps running side by side
 _FAULT_LINE = re.compile(r"FAULT status=(\w+) swept=(\d+) bypass=(\d+) crashed=(\d+)")
 
 
@@ -310,6 +328,97 @@ def _findings(text: str, probe: str, elf: Path, root: Path) -> list[dict]:
     return found
 
 
+_OBJDUMP_LINE = re.compile(r"^\s*([0-9a-f]+):\t([0-9a-f ]+?)\s*\t(\S+)(?:\t(.*))?$")
+
+
+def _instructions(elf: Path, target: str, functions: list[str]) -> list[tuple[int, int, str, str]]:
+    """(address, size, "function+offset", text) of every instruction of `target`'s functions."""
+    from .build import tool
+
+    code, nm = _run([tool("nm"), "-l", "-S", "--defined-only", str(elf)], elf.parent, 60)
+    if code != 0:
+        raise VirtulabError(f"nm failed:\n{nm}")
+    found = []
+    for line in nm.splitlines():
+        head, _, where = line.partition("\t")
+        parts = head.split()
+        if f"/{target}:" not in f"/{where}" or len(parts) != 4 or parts[2] not in "Tt":
+            continue
+        start, size, name = int(parts[0], 16), int(parts[1], 16), parts[3]
+        if functions and name not in functions:
+            continue
+        code, dump = _run([tool("objdump"), "-d", f"--start-address={start:#x}", f"--stop-address={start + size:#x}",
+                           str(elf)], elf.parent, 60)
+        for row in dump.splitlines():
+            m = _OBJDUMP_LINE.match(row)
+            if m and not m[3].startswith("."):
+                address = int(m[1], 16)
+                width = len(m[2].replace(" ", "")) // 2
+                text = " ".join(filter(None, (m[3], (m[4] or "").split("@")[0].strip())))
+                found.append((address, width, f"{name}+{address - start:#x}", text))
+    return found
+
+
+def _classify(output: str) -> str:
+    if "auth bypass" in output:
+        return "BYPASS"
+    return "denied" if ":PASS" in output else "crash"
+
+
+def _sweep_renode(cfg: ProjectConfig, root: Path, out: Path, elf: Path, probe: str) -> CheckOutcome:
+    """One fresh machine per skipped instruction, so a fault cannot leak into the next run."""
+    from .emulator import FaultSkip
+    from .emulator import run as emulate
+
+    board = BOARDS[cfg.board]
+    repl = renode_repl(cfg, root)
+    models = generated_models(cfg, root)
+
+    def attempt(index: int, skip_at: tuple | None) -> tuple[str, bool]:
+        run_dir = out / "runs" / f"{index:04d}"
+        shutil.rmtree(run_dir, ignore_errors=True)
+        (run_dir / "models").mkdir(parents=True)
+        for name, source in models.items():
+            (run_dir / "models" / name).write_text(source)
+        skip = None
+        if skip_at:
+            skip = FaultSkip(skip_at[0], skip_at[0] + skip_at[1], run_dir / "applied")
+        result = emulate(board, elf, _RENODE_RUN_SECONDS, run_dir, repl, skip)
+        return _classify(result.output), bool(skip and skip.marker.exists())
+
+    original, _ = attempt(0, None)
+    if original != "denied":
+        return CheckOutcome("fault", FAIL, f"{probe}: the run without a fault is not clean ({original}); "
+                                           "refusing to inject")
+    listing = _instructions(elf, option(cfg, "fault", "target"), option(cfg, "fault", "functions"))
+    if not listing:
+        return CheckOutcome("fault", FAIL, f"{probe}: inconclusive, no instructions found for the target")
+    with ThreadPoolExecutor(max_workers=RENODE_WORKERS) as pool:
+        results = list(pool.map(lambda job: attempt(job[0], job[1][:2]), enumerate(listing, 1)))
+    applied = bypass = crashed = 0
+    lines = []
+    for (address, _, where, text), (result, done) in zip(listing, results):
+        if not done:
+            if result != "denied":
+                return CheckOutcome("fault", FAIL, f"{probe}: inconclusive, no fault applied at {address:#x} "
+                                                   f"and the firmware did not finish ({result})")
+            continue
+        applied += 1
+        if result == "BYPASS":
+            bypass += 1
+            lines.append(f"0x{address:08x}   {where:<26} {text:<28} denied    BYPASS (property broken)")
+        elif result != "denied":
+            crashed += 1
+    if not applied:
+        return CheckOutcome("fault", FAIL, f"{probe}: inconclusive, no instruction of the target was reached")
+    text = "\n".join(lines)
+    data = {"swept": applied, "bypass": bypass, "crashed": crashed, "findings": _findings(text, probe, elf, root)}
+    if bypass:
+        return CheckOutcome("fault", FAIL, f"{probe}: bypass reachable: {bypass} of {applied} "
+                                           "single-instruction skips grant access", text, data)
+    return CheckOutcome("fault", PASS, f"{probe}: no bypass in {applied} skips", text, data)
+
+
 def _sweep(cfg: ProjectConfig, root: Path, work: Path, probe: str, name: str, prebuilt: bool = False) -> CheckOutcome:
     from .build import BuildConfig, build  # local: build pulls in the Arm toolchain
 
@@ -326,6 +435,8 @@ def _sweep(cfg: ProjectConfig, root: Path, work: Path, probe: str, name: str, pr
         if not result.ok or result.elf is None:
             return CheckOutcome("fault", FAIL, f"the fault probe {probe} did not build", result.log)
         elf = result.elf
+    if board.emulator == "renode":
+        return _sweep_renode(cfg, root, work / "fault" / name, elf, probe)
     cmd = [str(FAULT_SCRIPT), "--elf", str(elf), "--board", board.name,
            "--source", option(cfg, "fault", "target")]
     functions = option(cfg, "fault", "functions")
@@ -361,7 +472,12 @@ def run_fault(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
                                        "(first execution only)", log, data)
 
 
-RUNNERS = {"coverage": run_coverage, "fuzz": run_fuzz, "fault": run_fault}
+def run_scenarios(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
+    from .scenarios import run
+    return run(cfg, root, work)
+
+
+RUNNERS = {"coverage": run_coverage, "fuzz": run_fuzz, "fault": run_fault, "scenarios": run_scenarios}
 
 
 # ---------------------------------------------------------------------------

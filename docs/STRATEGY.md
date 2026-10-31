@@ -15,6 +15,8 @@ The evidence behind this is in [`MARKET.md`](MARKET.md). Everything here is a hy
 
 **Bench scenarios become files.** Benches use analog sources and injection rigs to fake a sensor's environment. With project-defined peripherals and scripted sensor input, that scenario lives in the repository and runs on every PR, which also removes the catalog as a bottleneck: a team can describe its own device instead of waiting for us to model it. It replaces the software side of those tests only. Electrical checks stay on the bench.
 
+**Faults during a sensor scenario.** Fault injection now runs on the same virtual board as sensors, so a team can ask whether one skipped instruction can hide an overheat. On the oven example, it found 5 of 21 such instructions in the plain code while all unit tests passed. No equivalent was found in the market research, but that research was not a dedicated search for one.
+
 This came from the founder and is untested with buyers. Ask about it in every discovery call: what rigs do you own, how often are they booked, and which scenarios never get run because they are hard to set up?
 
 ## Proof so far
@@ -37,7 +39,7 @@ Fuzzing found no memory corruption in those projects, so the honest line is "rea
 | 2 | **Licence just added** | Apache-2.0 is in the working tree, but counts only once committed and pushed | Push it before any outreach |
 | 3 | **Who pays is unclear** | Engineers adopt, compliance may fund it. Different pitch and price | Ask in every call, and find one real budget line |
 | 4 | **Thin moat** | The engine is QEMU, Renode, libFuzzer and GDB, all open. Sensor models are copyable | Build what compounds: evidence history, probe libraries, and customer integrations |
-| 5 | **Works on few real targets** | Project-defined I²C devices and ADC inputs now help, but only on one STM32F4 board. SPI, UART and timer-driven devices are missing, and fault injection cannot reach sensor-driven code because it needs a QEMU board | Add fault injection on Renode so sensor scenarios and security checks combine. Test one real product first |
+| 5 | **Works on few real targets** | Project-defined I²C devices and ADC inputs help, but only on one STM32F4 board. SPI, UART and timer-driven devices are missing | Add the next peripheral a real prospect needs. Test one real product first |
 | 6 | **Finding value needs expert effort** | Harnesses and probes need security thinking. That can make this a services business | Probe templates for common patterns, starting with secure boot and PIN checks |
 | 7 | **Demand for outside review may be small** | Secondary sources say default-class products self-assess. Then no assessor asks for our record, and the need is softer | Check the product class of each prospect. Class I and II may be the sharper target |
 | 8 | **Standards are unsettled** | Secondary sources say the CRA harmonised standards are not all published | No standard-mapping claims until the text is read. Keep "evidence", drop "compliance" |

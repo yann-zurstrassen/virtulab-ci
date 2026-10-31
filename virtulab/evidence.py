@@ -94,7 +94,7 @@ def sarif(suite) -> dict:
         for t in suite.outcome.tests.failures:
             results.append(_result("VL-UNIT", f"{t.name}: {t.message or 'failed'}", t.file, t.line))
     for c in suite.checks:
-        if c.test == "fault":
+        if c.test in ("fault", "scenarios"):
             for f in c.data.get("findings", []):
                 results.append(_result("VL-FAULT", f"Skipping `{f['instruction']}` in {f['function']} breaks "
                                                     f"the property of {f['probe']}", f.get("file"), f.get("line")))

@@ -1,0 +1,25 @@
+# A motor runs, and after a while a limit switch trips. No firmware test code decides that:
+# the rule below watches the firmware's motor pin and closes the switch.
+version: 1
+board: stm32f4_discovery
+build:
+  sources: [src/*.c, scenario/*.c]
+  include: [include]
+  cflags: "-std=c99 -Wall -Wextra"
+timeout: 30s
+tests:
+  scenarios:
+    sources: [scenario/main.c, src/gate.c, src/clock.c]
+    include: [include]
+    target: src/gate.c
+    functions: [gate_open]
+    cases:
+      switch_trips_in_time:
+        rules:
+          - { when: PA1, is: high, for: 100ms, set: PA2, to: 1 }
+        expect: [GATE=OPEN, MOTOR=OFF]
+        forbid: MOTOR=ON
+      switch_never_trips:
+        expect: [GATE=JAMMED, MOTOR=OFF]
+        forbid: MOTOR=ON
+        faults: [0ms, 300ms, 301ms]

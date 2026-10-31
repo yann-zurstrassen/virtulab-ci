@@ -309,7 +309,22 @@ TESTS = {t.id: t for t in [
             Option("include", "list", ["include"], "Include directories"),
         ),
         limits="Single skip, first execution only. Not a model of physical glitches.",
-        emulated_boards_only=True,
+    ),
+    TestKind(
+        "scenarios", "Physical scenarios",
+        "Runs one firmware build against a list of situations, each with what must and must not happen, "
+        "and can skip instructions at a chosen moment in a situation.",
+        "security", ("arm-none-eabi-gcc", "emulator"),
+        options=(
+            Option("sources", "list", [], "Sources of the scenario program", required=True),
+            Option("include", "list", ["include"], "Include directories"),
+            Option("cases", "map", {}, "Situations by name: stimulus or stimulus_file, expect, forbid, faults",
+                   required=True),
+            Option("target", "str", "", "Source file whose instructions a timed fault skips"),
+            Option("functions", "list", [], "Sweep only these functions"),
+        ),
+        limits="Follows the scripted input, with no model of how the world reacts to the firmware. "
+               "Single skip per run. Not a model of physical glitches.",
     ),
 ]}
 

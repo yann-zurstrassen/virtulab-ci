@@ -27,9 +27,16 @@ def _edit(path: Path, old: str, new: str) -> None:
 
 
 def _virtulab(root: Path, *args: str) -> tuple[int, str]:
-    proc = subprocess.run([sys.executable, "-m", "virtulab", *args, "-C", str(root)],
-                          capture_output=True, text=True, env=subprocess_env())
-    return proc.returncode, proc.stdout + proc.stderr
+    """Run a command and show each check as it starts, so a long sweep does not look frozen."""
+    env = {**subprocess_env(), "PYTHONUNBUFFERED": "1"}
+    proc = subprocess.Popen([sys.executable, "-m", "virtulab", *args, "-C", str(root)], env=env, text=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    lines = []
+    for line in proc.stdout:
+        lines.append(line)
+        if line.startswith("▶"):
+            print(f"  {line.strip()} ...", flush=True)
+    return proc.wait(), "".join(lines)
 
 
 def _summary(output: str) -> str:
@@ -75,7 +82,7 @@ def run_demo(root: Path, fuzz_seconds: int = 5) -> int:
     _git(root, "init", "-q", "-b", "main")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "Initial firmware")
-    print("$ virtulab run", flush=True)
+    print("$ virtulab run    # about a minute: fault injection runs the firmware hundreds of times", flush=True)
     code, out = _virtulab(root, "run", "--baseline", "HEAD")
     print(_summary(out))
     if code:

@@ -100,9 +100,32 @@ class Studio:
                 cases.append({"name": c.name, "description": c.description, "expect": c.expect, "forbid": c.forbid,
                               "faults": c.fault_times, "stimulus_file": c.stimulus_file})
         return {"name": self.root.name, "board": cfg.board, "cflags": cfg.cflags, "tests": list(cfg.tests),
+                "unit_plan": self.unit_plan(cfg),
                 "summary": {slug(v): self.summary(slug(v)) for v in self.variants},
                 "modules": {n: {"model": m.model, "bus": m.bus} for n, m in cfg.modules.items()},
                 "cases": cases, "variants": self.variants, "results": self.results()}
+
+    def unit_plan(self, cfg) -> dict:
+        """Exactly what `unit` runs: each test file, who wrote it, its suites and tests, and the runner
+        the build generates (or the project's own main())."""
+        import re as _re
+
+        from ..build import _BOARD_ONLY, _SUITE, resolve_sources, test_runner
+        from ..scaffold import origins
+        sources = resolve_sources(cfg.sources, self.root)
+        who = origins(cfg, self.root, sources)
+        files = []
+        for src in sources:
+            text = (self.root / src).read_text(errors="replace")
+            tests = _re.findall(r"RUN_TEST\(\s*(\w+)\s*\)", text)
+            suites = _SUITE.findall(text)
+            if not tests and not suites:
+                continue
+            files.append({"file": src, "origin": who.get(src, "yours"), "suites": suites, "tests": tests,
+                          "board": any(m in text for m in _BOARD_ONLY)})
+        runner = test_runner(sources, self.root)
+        return {"files": files, "runner": runner,
+                "own_main": runner is None and bool(files)}
 
     def summary(self, v: str) -> dict:
         """The headline numbers of one build, from the pages already recorded for it."""

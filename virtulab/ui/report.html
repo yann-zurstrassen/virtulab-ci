@@ -43,6 +43,9 @@
   .who { display:inline-block; font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:800; padding:1px 6px;
          border:1px solid; margin-left:8px; vertical-align:2px; }
   .who.yours { color:#0000c0; border-color:#0000c0; } .who.gen { color:#800080; border-color:#800080; } .who.vl { color:#006b6b; border-color:#006b6b; }
+  .part { border-left:4px solid; padding:2px 0 6px 14px; margin:14px 0 18px; }
+  .part.yours { border-color:#0000c0; } .part.gen { border-color:#800080; }
+  .parthead { font-size:15px; margin:4px 0 2px; }
   .key { margin:14px 0 0; color:var(--muted); font-size:12px; }
   .foot { margin-top:34px; padding-top:12px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; }
   .toolbar { max-width:1040px; margin:16px auto 0; display:flex; justify-content:flex-end; gap:8px; }
@@ -68,6 +71,12 @@ const status = s => s === "pass" || s === "PASS" ? `<span class="tag pass">PASS<
 let n = 0;
 const WHO = { yours: ["yours", "your project"], gen: ["gen", "generated"], vl: ["vl", "VirtuLab"] };
 const tag = k => `<span class="who ${WHO[k][0]}">${WHO[k][1]}</span>`;
+// unit tests by author: the team's own files, and VirtuLab's starter files (unchanged or extended)
+const GROUPS = () => {
+  const files = [...new Set(R.unit.map(t => t.file))], o = R.origins || {};
+  return [["Your tests", "yours", files.filter(f => (o[f] || "yours") === "yours")],
+          ["VirtuLab starter tests", "gen", files.filter(f => o[f] === "starter" || o[f] === "extended")]];
+};
 const section = (title, who) => `<h2><span class="n">${++n}</span>${title}${who ? who.map(tag).join("") : ""}</h2>`;
 const overall = M.overall === "pass";
 const when = (M.generated || "").replace("T", " ").replace("Z", " UTC");
@@ -94,7 +103,18 @@ h += section("Identification", ["yours"]) + `<table class="id">
 
 // 2. summary
 h += section("Summary", ["gen"]) + `<table><tr><th>Check</th><th>Result</th><th>Outcome</th></tr>` +
-  R.checks.map(c => `<tr><td>${esc(c.title)}</td><td>${status(c.status)}</td><td>${esc(c.summary)}</td></tr>`).join("") + `</table>`;
+  R.checks.map(c => {
+    let row = `<tr><td>${esc(c.title)}</td><td>${status(c.status)}</td><td>${esc(c.summary)}</td></tr>`;
+    if (c.test === "unit" && R.unit.length) {
+      for (const [label, k, files] of GROUPS()) {
+        const tests = R.unit.filter(t => files.includes(t.file)); if (!tests.length) continue;
+        const failed = tests.filter(t => t.result === "FAIL").length;
+        row += `<tr><td style="padding-left:24px">${label}${tag(k)}</td><td>${status(failed ? "fail" : "pass")}</td>
+          <td>${tests.length - failed}/${tests.length} passed</td></tr>`;
+      }
+    }
+    return row;
+  }).join("") + `</table>`;
 
 // emulated peripherals, and how far each model has been checked
 const models = Object.entries(M.models || {});
@@ -117,29 +137,37 @@ if (R.unit.length) {
   const checks = R.unit.reduce((a, t) => a + t.checks.length, 0);
   h += section("Unit tests on the virtual board", ["yours", "gen"]) +
     `<p class="note">${total} tests, ${checks} checks, ${failed} failed. Built for the target and run on the emulated board. Each check shows the expression the test compared, the value it expected, and the value the firmware produced.</p>`;
-  const files = {};
-  for (const t of R.unit) (files[t.file] = files[t.file] || []).push(t);
-  for (const [file, tests] of Object.entries(files)) {
-    const o = (R.origins || {})[file];
-    h += `<h3><code>${esc(file)}</code>${o === "yours" ? tag("yours") + ` <span class="note">the team's own test</span>`
-      : o === "starter" ? tag("gen") + ` <span class="note">VirtuLab's starter test, unchanged</span>`
-      : o === "extended" ? tag("gen") + tag("yours") + ` <span class="note">VirtuLab's starter, extended by the team</span>` : ""}</h3>`;
-    for (const t of tests) {
-      h += `<div class="test"><div class="head"><b>${esc(human(t.name))}</b><code>${esc(file)}:${t.line}</code>${status(t.result)}</div>`;
-      if (t.checks.length) {
-        h += `<table><colgroup><col style="width:52px"><col style="width:46%"><col><col style="width:78px"></colgroup><tr><th>Line</th><th>Expected</th><th>Actual</th><th>Result</th></tr>` +
-          t.checks.map(c => {
-            const exp = c.kind === "condition" ? `<code>${esc(c.actual_expr)}</code> is <span class="val">${esc(c.expected)}</span>`
-              : `<code class="exp">${esc(c.expected_expr)}</code> = <span class="val">${esc(c.expected)}</span>${c.kind === "within" ? " (tolerance)" : ""}`;
-            const act = c.kind === "condition" ? `<span class="val">${esc(c.actual)}</span>`
-              : `<code class="act">${esc(c.actual_expr)}</code> = <span class="val">${esc(c.actual)}</span>`;
-            return `<tr><td class="mono">${c.line}</td><td>${exp}</td><td>${act}</td><td>${c.held ? `<span class="pass">Held</span>` : `<span class="fail">Failed</span>`}</td></tr>`;
-          }).join("") + `</table>`;
-      } else {
-        h += `<table><tr><td class="note">${t.result === "FAIL" ? esc(t.message) : "No checks recorded (the test ran without assertions, or was built with an older runtime)."}</td></tr></table>`;
-      }
-      h += `</div>`;
+  const testBlock = t => {
+    let b = `<div class="test"><div class="head"><b>${esc(human(t.name))}</b><code>${esc(t.file)}:${t.line}</code>${status(t.result)}</div>`;
+    if (t.checks.length) {
+      b += `<table><colgroup><col style="width:52px"><col style="width:46%"><col><col style="width:78px"></colgroup><tr><th>Line</th><th>Expected</th><th>Actual</th><th>Result</th></tr>` +
+        t.checks.map(c => {
+          const exp = c.kind === "condition" ? `<code>${esc(c.actual_expr)}</code> is <span class="val">${esc(c.expected)}</span>`
+            : `<code class="exp">${esc(c.expected_expr)}</code> = <span class="val">${esc(c.expected)}</span>${c.kind === "within" ? " (tolerance)" : ""}`;
+          const act = c.kind === "condition" ? `<span class="val">${esc(c.actual)}</span>`
+            : `<code class="act">${esc(c.actual_expr)}</code> = <span class="val">${esc(c.actual)}</span>`;
+          return `<tr><td class="mono">${c.line}</td><td>${exp}</td><td>${act}</td><td>${c.held ? `<span class="pass">Held</span>` : `<span class="fail">Failed</span>`}</td></tr>`;
+        }).join("") + `</table>`;
+    } else {
+      b += `<table><tr><td class="note">${t.result === "FAIL" ? esc(t.message) : "No checks recorded (the test ran without assertions, or was built with an older runtime)."}</td></tr></table>`;
     }
+    return b + `</div>`;
+  };
+  const o = R.origins || {};
+  const what = { yours: "Written by the project team for this product.",
+                 gen: "Generated by VirtuLab for the sensors this project uses: they check the drivers against the sensor models." };
+  for (const [label, k, files] of GROUPS()) {
+    if (!files.length) continue;
+    const tests = R.unit.filter(t => files.includes(t.file));
+    const failed = tests.filter(t => t.result === "FAIL").length, nchecks = tests.reduce((a, t) => a + t.checks.length, 0);
+    h += `<div class="part ${k}"><h3 class="parthead">${label}${tag(k)}<span class="note"> · ${tests.length} tests, ${nchecks} checks, ${failed ? failed + " failed" : "all passed"}</span></h3>
+      <p class="note">${what[k]}</p>`;
+    for (const file of files) {
+      const extended = o[file] === "extended";
+      h += `<h3><code>${esc(file)}</code>${extended ? ` <span class="note">VirtuLab's starter, extended by the team</span>` : ""}</h3>`;
+      h += R.unit.filter(t => t.file === file).map(testBlock).join("");
+    }
+    h += `</div>`;
   }
 }
 

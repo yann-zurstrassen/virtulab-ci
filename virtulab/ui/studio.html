@@ -168,6 +168,12 @@
   .badge.yours { border-left:6px solid #0000c0 !important; } .badge.project { border-left:6px solid #c08000 !important; }
   .badge.starter, .badge.extended { border-left:6px solid #800080 !important; } .badge.virtulab { border-left:6px solid #008080 !important; }
   .src { background-image:none !important; }
+  details.plan { margin:6px 0 0; background:#fff; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; padding:2px 8px; }
+  details.plan summary { cursor:pointer; font-weight:700; font-size:12.5px; padding:3px 0; }
+  details.plan .ufile { margin:4px 0 6px; }
+  details.plan .ufile a { color:#000080; font-family:"Courier New", monospace; font-size:12.5px; }
+  details.plan ul { margin:2px 0 0 18px; padding:0; font-size:12px; color:#202020; }
+  details.plan .runner { margin:4px 0 6px; padding:6px 8px; background:#000; color:#c0c0c0; font-size:11px; white-space:pre; overflow:auto; max-height:260px; }
   .who { display:inline-block; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; font-weight:800; padding:0 5px;
          border:1px solid; margin-left:6px; vertical-align:1px; background:#fff; }
   .who.yours { color:#0000c0; border-color:#0000c0; } .who.gen { color:#800080; border-color:#800080; } .who.vl { color:#006b6b; border-color:#006b6b; }
@@ -317,8 +323,23 @@ function renderSide() {
     `<button data-v="${esc(n)}" class="${n === variant ? "on" : ""}">${esc(n)}</button>`).join("")}</div>
     <div class="flags">${flags ? "extra compiler flags: " + esc(flags) : "the code as it is in the project"}</div>`;
   if (P.tests.includes("unit"))
-    h += `<h3>Unit tests${tag("yours")}${tag("gen")}</h3><div class="case"><div class="desc" style="margin:0">Your tests, and VirtuLab's starter tests for your sensors, built for the chip and run on the virtual board. VirtuLab finds them and writes the runner.</div>
+  {
+    const U = P.unit_plan || { files: [] };
+    const mine = U.files.filter(f => f.origin === "yours"), theirs = U.files.filter(f => f.origin !== "yours");
+    const count = list => list.reduce((a, f) => a + f.tests.length, 0);
+    const human = n => n.replace(/^test_/, "").replace(/_/g, " ");
+    const fileBlock = f => `<div class="ufile"><a href="#" data-file="${esc(f.file)}">${esc(f.file)}</a>
+        <span class="note">${f.tests.length} tests${f.board ? " · on the board only" : ""}</span>
+        <ul>${f.tests.map(t => `<li>${esc(human(t))}</li>`).join("")}</ul></div>`;
+    h += `<h3>Unit tests${tag("yours")}${tag("gen")}</h3><div class="case"><div class="desc" style="margin:0">
+        <b>${count(U.files)} tests</b> in ${U.files.length} files: <b>${count(mine)}</b> written by you, <b>${count(theirs)}</b> VirtuLab starter tests for your sensors.
+        Built for the chip and run on the virtual board.</div>
+      <details class="plan"><summary>${tag("yours")} Your tests (${count(mine)})</summary>${mine.map(fileBlock).join("") || "<p class='note'>none yet</p>"}</details>
+      <details class="plan"><summary>${tag("gen")} VirtuLab starter tests (${count(theirs)})</summary>${theirs.map(fileBlock).join("")}</details>
+      <details class="plan"><summary>${U.own_main ? "Your own main() runs them" : "The runner VirtuLab writes for this build"}</summary>
+        ${U.own_main ? "<p class='note'>The project has its own main(), so VirtuLab runs it as is.</p>" : `<pre class="runner">${esc(U.runner || "")}</pre>`}</details>
       <div class="row"><button class="go alt" data-job="unit">Run unit tests</button></div></div>`;
+  }
   h += `<h3>Scenarios${tag("yours")}</h3>`;
   for (const c of P.cases) {
     const key = `runs/${slug(c.name)}--${v}/board.html`, rec = has(key);
@@ -348,6 +369,8 @@ function renderSide() {
   $("side").innerHTML = h;
 }
 $("side").addEventListener("click", e => {
+  const link = e.target.closest("a[data-file]");
+  if (link) { e.preventDefault(); openFile(link.dataset.file); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.v) { variant = b.dataset.v; current = null; renderSide(); dashboard(); return; }
   if (b.dataset.dash !== undefined) { current = null; renderSide(); dashboard(); return; }

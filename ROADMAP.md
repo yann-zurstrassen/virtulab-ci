@@ -31,6 +31,18 @@ Phases are ordered by what blocks adoption. Items within a phase can be worked o
 
 ---
 
+## Open items to revisit
+
+### Test discovery (first pass, 2026-11-04)
+
+The build now writes the test runner itself (`build.test_runner`): it finds every `int test_<name>_run(void)`, leaves out of native host builds the suites that call `vl_sim`, and steps aside when a project has its own `main()`. It meets the rule that a team writes only firmware and tests, but it rests on pattern matching and naming, and needs a proper design:
+
+- [ ] Discovery by regex: suites inside comments or `#if 0`, suites defined through macros, C++ sources.
+- [ ] Board-only suites inferred from `vl_sim`: replace with an explicit, declared marker.
+- [ ] Compatibility with Unity's runner generator and Ceedling conventions; a worked "bring your own test executable" example.
+- [ ] Run order, per-suite setup, and running one suite or one test.
+- [ ] Two emulator tests fail only when many Renode runs compete ("all eleven sensors pass together", "a driver that does not wait"): make them independent of machine load.
+
 ## Principles
 
 These decisions came out of the design discussion. Every phase should respect them.

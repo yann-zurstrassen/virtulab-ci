@@ -26,6 +26,11 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "default"
 
 
+def _in_git(root: Path) -> bool:
+    return subprocess.run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+                          capture_output=True, text=True).returncode == 0
+
+
 def parse_variants(specs: list[str]) -> dict[str, str]:
     """["plain=-DSAFE=0"] -> {"as written": "", "plain": "-DSAFE=0"}"""
     variants = {"as written": ""}
@@ -200,8 +205,12 @@ class Studio:
             key, page = f"faults/{v}", "faults.html"
         elif kind == "sweep":
             # with the unit tests, so the evidence record of this build covers both
+            # with the other checks of the project, so the evidence and report of this build cover them all
             tests = config.load(self.root).tests
-            cmd += ["run", "-C", str(self.root), "--only", "unit,scenarios" if "unit" in tests else "scenarios"]
+            only = [t for t in ("unit", "footprint", "coverage", "scenarios") if t in tests]
+            cmd += ["run", "-C", str(self.root), "--only", ",".join(only)]
+            if "footprint" in tests and _in_git(self.root):
+                cmd += ["--baseline", "HEAD"]   # the size change against the last commit
             key, page = f"sweeps/{v}", "sweep.html"
         elif kind == "unit":
             cmd += ["run", "-C", str(self.root), "--only", "unit"]

@@ -13,6 +13,13 @@ modules:
   skin: { model: sht31, bus: i2c1, address: 0x44 }
 tests:
   unit: {}
+  footprint:                          # fail when a change grows the firmware more than this
+    flash_increase: 4K
+    ram_increase: 2K
+  coverage:                           # measured natively on this machine, on the product logic
+    sources: [src/patch.c]
+    # code that talks to the emulated sensors cannot run natively: it stays out, with its tests
+    exclude: [src/i2c.c, src/clock.c, src/mpu6050.c, src/sht31.c, src/monitor.c, test/test_mpu6050.c, test/test_sht31.c]
   scenarios:
     sources: [scenario/main.c, src/monitor.c, src/patch.c, src/mpu6050.c, src/sht31.c, src/i2c.c, src/crc.c, src/clock.c]
     include: [include]

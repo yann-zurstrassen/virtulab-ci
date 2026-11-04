@@ -393,6 +393,10 @@ function dashboard() {
            ut ? esc(ut.summary) + (uo ? `: ${uo.yours} of your own, ${uo.starter} VirtuLab starter tests for your sensors` : "") : "not recorded for this build yet", has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : has(`evidence/${v}/evidence.html`) ? `evidence/${v}/evidence.html` : "")}
     ${tile(`Scenarios you wrote${tag("yours")}`, sc ? (sc.status === "pass" ? `${cases}/${cases}` : "Fail") : `${cases}`, sc ? (sc.status === "pass" ? "ok" : "bad") : "",
            sc ? esc(sc.summary) : "run them from the list on the left", has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : has(`evidence/${v}/evidence.html`) ? `evidence/${v}/evidence.html` : "")}
+    ${S.footprint ? tile(`Flash and RAM budget${tag("yours")}`, S.footprint.status === "pass" ? "Pass" : "Fail", S.footprint.status === "pass" ? "ok" : "bad",
+           esc(S.footprint.summary) + " against the last commit", has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : "") : ""}
+    ${S.coverage ? tile(`Line and branch coverage${tag("gen")}`, esc((S.coverage.summary.match(/^[\d.]+% lines/) || ["–"])[0]), S.coverage.status === "pass" ? "ok" : "bad",
+           esc(S.coverage.summary), has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : "") : ""}
     ${tile(`Fault scenarios VirtuLab generated${tag("gen")}`, fl ? `${fl.broken} of ${fl.runs}` : "–", fl ? (fl.broken ? "bad" : "ok") : "",
            fl ? `broke a rule. Your ${fl.scenarios} scenarios, each with ${span(fl.faults)} sensor faults, at the ${span(fl.moments)} moments its inputs change` : "generate them from the list on the left",
            has(`faults/${v}/faults.html`) ? `faults/${v}/faults.html` : "")}

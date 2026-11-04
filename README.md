@@ -71,6 +71,10 @@ The sample firmware `init` can create (`--template starter`) is built to pass on
 
 Every `virtulab run` leaves `.virtulab/evidence/`: `junit.xml` for any CI's test view, `results.sarif` so findings land on the source line in code scanning, and `evidence.json` and `EVIDENCE.md`, which record the commit, image hash, tool versions, results and what each check does not show. It is an input to a security case, not a compliance claim.
 
+## 🧪 Your tests, no runner to write
+
+Write test files; VirtuLab finds every `int test_<name>_run(void)` in them and generates the `main()` that runs them, at build time, so nothing generated lives in your project. Suites that drive the emulated board (they call `vl_sim`) are left out of native host builds such as coverage. A project with its own `main()` keeps it: bring your own test executable, in Unity's output format, and VirtuLab runs it as is.
+
 ## 🔧 Use your own build
 
 Keep CMake, Make or west. VirtuLab runs the command, tests the ELF, and repeats the command on the base commit for the footprint delta:

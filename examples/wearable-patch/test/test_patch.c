@@ -1,6 +1,5 @@
 /* The alarm logic alone, with samples written by hand: no sensor involved. */
 #include "patch.h"
-#include "test_suites.h"
 #include "virtulab_test.h"
 
 static void feed(int32_t z_mg, uint32_t samples)

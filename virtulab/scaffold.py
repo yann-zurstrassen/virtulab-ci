@@ -9,9 +9,6 @@ from .config import ProjectConfig, parse_pin, sim_path
 TEMPLATES = Path(__file__).resolve().parent / "templates" / "starter"
 
 # Starter features that are not sensors: (suite function, needs hardware).
-_SUITES = {"core": ("test_crc_run", False), "parser": ("test_parser_run", False),
-           "auth": ("test_auth_run", False), "nmea": ("test_nmea_run", False),
-           "modbus": ("test_modbus_run", False)}
 _NO_SUITE = {"stm32f4", "i2c", "spi", "uart", "clock"}  # shared driver code, no tests of its own
 _DRIVER_FILES = {"i2c": ["src/i2c.c"], "spi": ["src/spi.c"], "uart": ["src/uart.c"],
                  "clock": ["src/clock.c"]}
@@ -42,29 +39,6 @@ def _features(cfg: ProjectConfig) -> list[str]:
             features += [f for f in sensor.sample.extras if f not in features]
             features.append(sensor.id)
     return features
-
-
-def _suite(feature: str) -> tuple[str, bool] | None:
-    if feature in _SUITES:
-        return _SUITES[feature]
-    module = catalog.MODULES.get(feature)
-    return (module.sample.suite, True) if module and module.sample else None
-
-
-def _test_files(features: list[str]) -> tuple[str, str]:
-    suites = [s for s in map(_suite, features) if s]
-    header = ["#ifndef TEST_SUITES_H", "#define TEST_SUITES_H", "",
-              "/* Each suite returns its number of failures; test_main.c adds them up. */"]
-    header += [f"int {name}(void);" for name, _ in suites] + ["", "#endif /* TEST_SUITES_H */", ""]
-    body = ['#include "test_suites.h"', "", "int main(void)", "{", "    int failures = 0;", ""]
-    for name, hardware in suites:
-        if hardware:
-            body += ["#ifndef VIRTULAB_HOST /* needs the emulated sensor, not available natively */",
-                     f"    failures += {name}();", "#endif"]
-        else:
-            body.append(f"    failures += {name}();")
-    body += ["    return (failures == 0) ? 0 : 1;", "}", ""]
-    return "\n".join(header), "\n".join(body)
 
 
 def apply_defaults(cfg: ProjectConfig) -> None:
@@ -143,8 +117,7 @@ def starter_files(cfg: ProjectConfig, features: list[str] | None = None) -> dict
                 for key, value in subst.items():
                     text = text.replace(key, value)
                 files[path.relative_to(TEMPLATES / feature).as_posix()] = text
-    files["test/test_suites.h"], files["test/test_main.c"] = _test_files(features)
-    return files
+    return files   # no test_main.c: the build generates the runner (build.test_runner)
 
 
 def origins(cfg: ProjectConfig, root: Path, files: list[str]) -> dict[str, str]:

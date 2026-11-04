@@ -1,7 +1,6 @@
 #include <string.h>
 
 #include "crc.h"
-#include "test_suites.h"
 #include "virtulab_test.h"
 
 static const char check_input[] = "123456789";

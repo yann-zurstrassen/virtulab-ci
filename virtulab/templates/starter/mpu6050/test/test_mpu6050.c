@@ -3,7 +3,6 @@
  * virtulab.yml. vl_sim() sets the motion and temperature the emulated chip measures.
  */
 #include "mpu6050.h"
-#include "test_suites.h"
 #include "virtulab.h"
 #include "virtulab_test.h"
 

@@ -3,7 +3,6 @@
  * declared in virtulab.yml. vl_sim() changes what the emulated sensor measures.
  */
 #include "bmp180.h"
-#include "test_suites.h"
 #include "virtulab.h"
 #include "virtulab_test.h"
 

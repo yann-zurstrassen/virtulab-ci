@@ -3,7 +3,6 @@
  * virtulab.yml. vl_sim() sets the voltage and current the emulated monitor measures.
  */
 #include "ina219.h"
-#include "test_suites.h"
 #include "virtulab.h"
 #include "virtulab_test.h"
 

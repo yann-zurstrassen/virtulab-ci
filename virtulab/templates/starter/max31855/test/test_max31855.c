@@ -3,7 +3,6 @@
  * virtulab.yml. vl_sim() sets the temperatures and faults the emulated chip reports.
  */
 #include "max31855.h"
-#include "test_suites.h"
 #include "virtulab.h"
 #include "virtulab_test.h"
 

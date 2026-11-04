@@ -78,7 +78,7 @@ def board_info(name: str) -> dict:
 @dataclass(frozen=True)
 class Sample:
     """The starter firmware `init --template starter` writes for a sensor (templates/starter/<id>)."""
-    suite: str  # test suite function that test_main.c calls
+    suite: str  # test suite function the generated runner calls (build.test_runner)
     hardware: tuple[str, ...]  # files that only build for the target (excluded from native coverage)
     extras: tuple[str, ...] = ()  # pure-logic template folders the driver builds on
 

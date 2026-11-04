@@ -1,7 +1,6 @@
 #include <string.h>
 
 #include "parser.h"
-#include "test_suites.h"
 #include "virtulab_test.h"
 
 /* Hand-computed with an independent CRC-16/CCITT-FALSE: payload {1,2,3}, CRC 0x7E2D. */

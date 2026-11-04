@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "modem.h"
-#include "test_suites.h"
 #include "virtulab.h"
 #include "virtulab_test.h"
 

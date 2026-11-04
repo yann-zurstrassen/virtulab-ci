@@ -4,7 +4,6 @@
  * makes it send a sentence.
  */
 #include "gps.h"
-#include "test_suites.h"
 #include "virtulab.h"
 #include "virtulab_test.h"
 

@@ -120,7 +120,12 @@ def run_coverage(cfg: ProjectConfig, root: Path, work: Path) -> CheckOutcome:
     out.mkdir(parents=True)
     flags = (_host_flags(cfg.cflags) + _includes(cfg, root, []) + [f"-I{RUNTIME_DIR}", "-DVIRTULAB_HOST=1"])
     objects, log = [], []
+    from .build import test_runner
     all_sources = sources + [str(RUNTIME_DIR / "virtulab_test.c"), str(HOST_SHIM)]
+    runner = test_runner(sources, root)
+    if runner:
+        (out / "virtulab_runner.c").write_text(runner)
+        all_sources.append(str(out / "virtulab_runner.c"))
     for i, src in enumerate(all_sources):
         path = src if Path(src).is_absolute() else str(root / src)
         (out / f"{i:03d}").mkdir(exist_ok=True)

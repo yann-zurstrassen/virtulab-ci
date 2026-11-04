@@ -108,6 +108,38 @@ class SensorRunTest(unittest.TestCase):
             self.assertIn(f"{caught_by}:FAIL", out)
 
 
+def runner_of(root: Path) -> str:
+    """The test runner the build would generate for a project."""
+    from virtulab.build import resolve_sources, test_runner
+    return test_runner(resolve_sources(config.load(root).sources, root), root) or ""
+
+
+class TestRunnerTest(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root)
+        (self.root / "test").mkdir()
+
+    def write(self, name, text):
+        (self.root / "test" / name).write_text(text)
+        return f"test/{name}"
+
+    def test_every_suite_is_run_and_board_suites_skip_the_host(self):
+        from virtulab.build import test_runner
+        files = [self.write("test_logic.c", "int test_logic_run(void)\n{\n    return 0;\n}\n"),
+                 self.write("test_sensor.c", 'int test_sensor_run(void) { vl_sim("x"); return 0; }\n')]
+        runner = test_runner(files, self.root)
+        self.assertIn("    failures += test_logic_run();", runner)
+        self.assertIn("#ifndef VIRTULAB_HOST /* drives the emulated board */\n    failures += test_sensor_run();", runner)
+
+    def test_a_project_with_its_own_main_keeps_it(self):
+        from virtulab.build import test_runner
+        files = [self.write("test_logic.c", "int test_logic_run(void) { return 0; }\n"),
+                 self.write("main.c", "int main(void)\n{\n    return test_logic_run();\n}\n")]
+        self.assertIsNone(test_runner(files, self.root))
+        self.assertIsNone(test_runner([self.write("helpers.c", "int helper(void) { return 1; }\n")], self.root))
+
+
 class InitTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp()).resolve()
@@ -122,10 +154,10 @@ class InitTest(unittest.TestCase):
         self.assertEqual(cfg.board, "stm32f4_discovery")
         self.assertEqual(set(cfg.modules), {"temp", "baro"})
         self.assertEqual(list(cfg.tests), ["unit", "coverage"])
-        for path in ("src/tmp108.c", "src/bmp180.c", "src/i2c.c", "test/test_main.c",
-                     ".github/workflows/virtulab.yml"):
+        for path in ("src/tmp108.c", "src/bmp180.c", "src/i2c.c", ".github/workflows/virtulab.yml"):
             self.assertTrue((self.tmp / path).is_file(), path)
-        main_c = (self.tmp / "test/test_main.c").read_text()
+        self.assertFalse((self.tmp / "test/test_main.c").exists())   # the build writes the runner
+        main_c = runner_of(self.tmp)
         self.assertIn("test_thermostat_run", main_c)
         self.assertIn("test_bmp180_run", main_c)
         self.assertIn("sysbus.i2c1.baro", (self.tmp / "test/test_bmp180.c").read_text())
@@ -141,7 +173,7 @@ class InitTest(unittest.TestCase):
                      "include/stm32f4_regs.h", "test/test_adxl345.c", "test/test_gps.c", "test/test_nmea.c"):
             self.assertTrue((self.tmp / path).is_file(), path)
         self.assertFalse((self.tmp / "src/i2c.c").exists())  # only drivers for the protocols in use
-        main_c = (self.tmp / "test/test_main.c").read_text()
+        main_c = runner_of(self.tmp)
         self.assertIn("test_adxl345_run", main_c)
         self.assertIn("test_gps_run", main_c)
         self.assertIn("test_nmea_run", main_c)
@@ -164,7 +196,7 @@ class InitTest(unittest.TestCase):
                                     "--template", "starter", "--ci", "none", "-y")
                 self.assertEqual(code, 0, out)
                 suite = module.sample.suite
-                self.assertIn(f"{suite}();", (root / "test/test_main.c").read_text())
+                self.assertIn(f"{suite}();", runner_of(root))
                 tests = "".join(p.read_text() for p in (root / "test").glob("test_*.c"))
                 self.assertRegex(tests, rf"int {suite}\(void\)")
                 for file in module.sample.hardware:

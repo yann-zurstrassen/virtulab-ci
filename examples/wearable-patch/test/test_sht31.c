@@ -6,7 +6,6 @@
 
 #include "clock.h"
 #include "sht31.h"
-#include "test_suites.h"
 #include "virtulab.h"
 #include "virtulab_test.h"
 

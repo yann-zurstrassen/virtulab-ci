@@ -168,6 +168,9 @@
   .badge.yours { border-left:6px solid #0000c0 !important; } .badge.project { border-left:6px solid #c08000 !important; }
   .badge.starter, .badge.extended { border-left:6px solid #800080 !important; } .badge.virtulab { border-left:6px solid #008080 !important; }
   .src { background-image:none !important; }
+  .who { display:inline-block; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; font-weight:800; padding:0 5px;
+         border:1px solid; margin-left:6px; vertical-align:1px; background:#fff; }
+  .who.yours { color:#0000c0; border-color:#0000c0; } .who.gen { color:#800080; border-color:#800080; } .who.vl { color:#006b6b; border-color:#006b6b; }
 </style>
 </head>
 <body>
@@ -314,9 +317,9 @@ function renderSide() {
     `<button data-v="${esc(n)}" class="${n === variant ? "on" : ""}">${esc(n)}</button>`).join("")}</div>
     <div class="flags">${flags ? "extra compiler flags: " + esc(flags) : "the code as it is in the project"}</div>`;
   if (P.tests.includes("unit"))
-    h += `<h3>Unit tests</h3><div class="case"><div class="desc" style="margin:0">The project's tests, built for the chip and run on the virtual board.</div>
+    h += `<h3>Unit tests${tag("yours")}${tag("gen")}</h3><div class="case"><div class="desc" style="margin:0">Your tests, and VirtuLab's starter tests for your sensors, built for the chip and run on the virtual board. VirtuLab finds them and writes the runner.</div>
       <div class="row"><button class="go alt" data-job="unit">Run unit tests</button></div></div>`;
-  h += `<h3>Scenarios</h3>`;
+  h += `<h3>Scenarios${tag("yours")}</h3>`;
   for (const c of P.cases) {
     const key = `runs/${slug(c.name)}--${v}/board.html`, rec = has(key);
     h += `<div class="case${current === key ? " on" : ""}"><div class="name">${esc(c.name.replace(/_/g, " "))}</div>
@@ -329,18 +332,18 @@ function renderSide() {
   }
   if (P.cases.some(c => c.forbid.length)) {
     const key = `faults/${v}/faults.html`, rec = has(key);
-    h += `<h3>Fault scenarios · generated</h3><div class="case"><div class="desc" style="margin:0">From your scenarios, VirtuLab generates one case per sensor fault (stuck, saturated, noisy, silent, garbled) at every moment the inputs change, and judges each with the scenario's own <i>never</i> rule.</div>
+    h += `<h3>Fault scenarios${tag("gen")}</h3><div class="case"><div class="desc" style="margin:0">From your scenarios, VirtuLab generates one case per sensor fault (stuck, saturated, noisy, silent, garbled) at every moment the inputs change, and judges each with the scenario's own <i>never</i> rule.</div>
       <div class="row">${rec ? `<button class="go" data-open="${key}">Open the fault scenarios</button><button class="go alt" data-job="faults">Re-generate</button>`
                               : `<button class="go" data-job="faults">Generate fault scenarios</button><small>a few minutes</small>`}</div></div>`;
   }
   if (P.cases.some(c => c.faults.length)) {
     const key = `sweeps/${v}/sweep.html`, rec = has(key);
-    h += `<h3>Glitch sweep</h3><div class="case"><div class="desc" style="margin:0">Replays the scenarios with glitches, skipping each instruction of the target code once, and shows what every skip did.</div>
+    h += `<h3>Glitch sweep${tag("gen")}</h3><div class="case"><div class="desc" style="margin:0">Replays the scenarios with glitches, skipping each instruction of the target code once, and shows what every skip did.</div>
       <div class="row">${rec ? `<button class="go warn" data-open="${key}">Open the sweep</button><button class="go alt" data-job="sweep">Re-run</button>`
                               : `<button class="go warn" data-job="sweep">Run the sweep</button><small>a few minutes</small>`}</div></div>`;
   }
   const ev = `evidence/${v}/evidence.html`, rep = `reports/${v}/report.html`;
-  if (has(ev) || has(rep)) h += `<h3>Report and evidence</h3><div class="case"><div class="desc" style="margin:0">The verification report of the last run on this build: every test with its expected and actual values, every scenario with what it must and must never report, and the limits. Printable as a PDF.</div>
+  if (has(ev) || has(rep)) h += `<h3>Report and evidence${tag("gen")}</h3><div class="case"><div class="desc" style="margin:0">The verification report of the last run on this build: every test with its expected and actual values, every scenario with what it must and must never report, and the limits. Printable as a PDF.</div>
       <div class="row">${has(rep) ? `<button class="go" data-open="${rep}">Verification report</button>` : ""}${has(ev) ? `<button class="go alt" data-open="${ev}">Evidence record</button>` : ""}</div></div>`;
   $("side").innerHTML = h;
 }
@@ -351,22 +354,26 @@ $("side").addEventListener("click", e => {
   if (b.dataset.open) return show(b.dataset.open);
   if (b.dataset.job) start(b.dataset.job, b.dataset.case || null, null);
 });
+const WHO = { yours: ["yours", "your project"], gen: ["gen", "generated"], vl: ["vl", "VirtuLab"] };
+const tag = k => `<span class="who ${WHO[k][0]}">${WHO[k][1]}</span>`;
 const span = list => !list || !list.length ? "?" : list.length === 1 ? String(list[0]) : `${list[0]}–${list[list.length - 1]}`;
 function dashboard() {
   const v = slug(variant), S = (P.summary || {})[v] || {}, cases = P.cases.length;
   const tile = (title, big, cls, text, open) =>
     `<div class="tile${open ? "" : " off"}" ${open ? `data-open="${open}"` : ""}><small>${title}</small><b class="${cls}">${big}</b><span>${text}</span></div>`;
+  const uo = S.unit_by_origin;
   const sc = S.scenarios, ut = S.unit, fl = S.faults, gl = S.glitch;
   $("empty").innerHTML = `<div class="dash"><h1>${esc(P.name)} · firmware ${esc(variant)}</h1>
-    <p>${S.commit ? "Last recorded on commit " + esc(S.commit) + " · " : ""}every number opens its evidence.</p><div class="tiles">
-    ${tile("Unit tests on the virtual board", ut ? (ut.status === "pass" ? "Pass" : "Fail") : "–", ut ? (ut.status === "pass" ? "ok" : "bad") : "",
-           ut ? esc(ut.summary) : "not recorded for this build yet", has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : has(`evidence/${v}/evidence.html`) ? `evidence/${v}/evidence.html` : "")}
-    ${tile("Scenarios you wrote", sc ? (sc.status === "pass" ? `${cases}/${cases}` : "Fail") : `${cases}`, sc ? (sc.status === "pass" ? "ok" : "bad") : "",
+    <p>${S.commit ? "Last recorded on commit " + esc(S.commit) + " · " : ""}every number opens its evidence.</p>
+    <p>${tag("yours")} written by the team · ${tag("gen")} produced by VirtuLab from the team's choices · ${tag("vl")} the same for every project</p><div class="tiles">
+    ${tile(`Unit tests on the virtual board${tag("yours")}${tag("gen")}`, ut ? (ut.status === "pass" ? "Pass" : "Fail") : "–", ut ? (ut.status === "pass" ? "ok" : "bad") : "",
+           ut ? esc(ut.summary) + (uo ? `: ${uo.yours} of your own, ${uo.starter} VirtuLab starter tests for your sensors` : "") : "not recorded for this build yet", has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : has(`evidence/${v}/evidence.html`) ? `evidence/${v}/evidence.html` : "")}
+    ${tile(`Scenarios you wrote${tag("yours")}`, sc ? (sc.status === "pass" ? `${cases}/${cases}` : "Fail") : `${cases}`, sc ? (sc.status === "pass" ? "ok" : "bad") : "",
            sc ? esc(sc.summary) : "run them from the list on the left", has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : has(`evidence/${v}/evidence.html`) ? `evidence/${v}/evidence.html` : "")}
-    ${tile("Fault scenarios VirtuLab generated", fl ? `${fl.broken} of ${fl.runs}` : "–", fl ? (fl.broken ? "bad" : "ok") : "",
+    ${tile(`Fault scenarios VirtuLab generated${tag("gen")}`, fl ? `${fl.broken} of ${fl.runs}` : "–", fl ? (fl.broken ? "bad" : "ok") : "",
            fl ? `broke a rule. Your ${fl.scenarios} scenarios, each with ${span(fl.faults)} sensor faults, at the ${span(fl.moments)} moments its inputs change` : "generate them from the list on the left",
            has(`faults/${v}/faults.html`) ? `faults/${v}/faults.html` : "")}
-    ${tile("Glitch sweep of the safety decision", gl ? `${gl.broken} of ${gl.runs}` : "–", gl ? (gl.broken ? "bad" : "ok") : "",
+    ${tile(`Glitch sweep of the safety decision${tag("gen")}`, gl ? `${gl.broken} of ${gl.runs}` : "–", gl ? (gl.broken ? "bad" : "ok") : "",
            gl ? "single skipped instructions broke the rule" : "run it from the list on the left", has(`sweeps/${v}/sweep.html`) ? `sweeps/${v}/sweep.html` : "")}
     </div></div>`;
   $("empty").style.display = "grid"; $("view").removeAttribute("src");

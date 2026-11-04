@@ -2,7 +2,6 @@
 #include <string.h>
 
 #include "nmea.h"
-#include "test_suites.h"
 #include "virtulab_test.h"
 
 /* Checksum = XOR of every character between '$' and '*' (NMEA 0183). */

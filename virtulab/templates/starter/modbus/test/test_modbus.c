@@ -2,7 +2,6 @@
 #include <string.h>
 
 #include "modbus.h"
-#include "test_suites.h"
 #include "virtulab_test.h"
 
 static void test_modbus_crc16_matches_the_specification_examples(void)

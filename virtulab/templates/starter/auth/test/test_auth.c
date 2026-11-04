@@ -1,5 +1,4 @@
 #include "auth.h"
-#include "test_suites.h"
 #include "virtulab_test.h"
 
 static const uint8_t good_pin[AUTH_PIN_LEN] = {1u, 2u, 3u, 4u, 5u, 6u};

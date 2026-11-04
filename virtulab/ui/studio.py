@@ -119,6 +119,12 @@ class Studio:
         if sw:
             reached = [r for r in sw["runs"] if r["result"] != "not_reached"]
             out["glitch"] = {"runs": len(reached), "broken": sum(r["result"] == "broken" for r in reached)}
+        rep = load(f"reports/{v}/report.json")
+        if rep and rep.get("unit"):
+            who = rep.get("origins", {})
+            out["unit_by_origin"] = {
+                "yours": sum(1 for u in rep["unit"] if who.get(u["file"]) == "yours"),
+                "starter": sum(1 for u in rep["unit"] if who.get(u["file"]) in ("starter", "extended"))}
         fl = load(f"faults/{v}/faults.json")
         if fl:
             active = [c for c in fl["cases"] if not c.get("skipped")]

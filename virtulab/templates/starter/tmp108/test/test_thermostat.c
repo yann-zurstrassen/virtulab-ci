@@ -2,7 +2,6 @@
  * Runs on the emulated STM32F4 Discovery (Renode) with a TMP108 on I2C1,
  * declared in virtulab.yml. vl_sim() changes what the emulated sensor reports.
  */
-#include "test_suites.h"
 #include "thermostat.h"
 #include "tmp108.h"
 #include "virtulab.h"

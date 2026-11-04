@@ -3,7 +3,6 @@
  * declared in virtulab.yml. vl_sim() sets what the emulated transmitter measures and breaks it.
  */
 #include "modbus_rtu.h"
-#include "test_suites.h"
 #include "virtulab.h"
 #include "virtulab_test.h"
 

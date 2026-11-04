@@ -178,7 +178,10 @@ def _renode_script(board: Board, elf: Path, work_dir: Path, peripherals: str | N
     lines = ["using sysbus"]
     if peripherals and ("VirtuLab." in peripherals or (work_dir / "models").is_dir()):
         # Compile the VirtuLab device library (datasheet-accurate models) into Renode.
-        lines += [f"include @{model}" for model in sorted(DEVICES_DIR.glob("*.cs"))]
+        # Only the library models this board uses: each one is compiled at start-up, which can take
+        # seconds per run, and a sweep starts hundreds of runs.
+        used = set(re.findall(r"VirtuLab\.(\w+)", peripherals))
+        lines += [f"include @{model}" for model in sorted(DEVICES_DIR.glob("*.cs")) if model.stem in used]
         lines += [f"include @{model}" for model in sorted((work_dir / "models").glob("*.cs"))]
     lines += [
         'mach create "virtulab"',
@@ -288,10 +291,21 @@ def _read_pc(proc: subprocess.Popen, log: Path) -> int | None:
     return None
 
 
+def _size(path: Path) -> int:
+    """A log's size, or 0 while it does not exist: Renode replaces its logs as it starts."""
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return 0
+
+
 def _log_tail(log: Path) -> str:
-    with log.open("rb") as handle:
-        handle.seek(max(0, log.stat().st_size - 16384))
-        return handle.read().decode(errors="replace")
+    try:
+        with log.open("rb") as handle:
+            handle.seek(max(0, _size(log) - 16384))
+            return handle.read().decode(errors="replace")
+    except FileNotFoundError:
+        return ""
 
 
 def _read_log(path: Path) -> str:
@@ -332,7 +346,7 @@ def _run_renode(board: Board, elf: Path, timeout: float, work_dir: Path,
                 failure = _renode_error(renode_log)
                 if failure:
                     raise VirtulabError(f"Renode could not set up the virtual board:\n{failure}")
-                flooded = any(p.exists() and p.stat().st_size > _MAX_LOG_BYTES for p in (renode_log, uart_log))
+                flooded = any(_size(p) > _MAX_LOG_BYTES for p in (renode_log, uart_log))
                 if flooded or time.monotonic() - start > timeout:
                     timed_out = True
                     timeout_pc = _read_pc(proc, renode_log)

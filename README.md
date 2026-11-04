@@ -143,6 +143,26 @@ rules:
 
 For anything rules cannot express, write a normal Renode model and list it under `models:` and `repl:`. See [`examples/oven-controller`](examples/oven-controller) and [`examples/motor-limit-switch`](examples/motor-limit-switch).
 
+## 🔬 See inside the virtual board
+
+`virtulab trace` records every register access of a run on the virtual clock and writes one page, `.virtulab/trace/index.html`:
+
+```sh
+virtulab trace -C examples/oven-controller --case sudden_spike
+```
+
+Each access shows:
+- the register and its bit fields, decoded with names from the chip maker's SVD file
+- the firmware line that made the access
+- for VirtuLab's own models, the model code that answered
+- a chart of that register over time
+- I²C messages as the emulated controller reports them, and SPI and UART messages rebuilt from the firmware's data-register accesses, each named by device, with a link to its datasheet and its model code. Catalog sensors' messages are decoded with the model's own register names, and registers the model does not name are marked unnamed. Your own devices are decoded per register, and UART traffic is shown as text
+- a warning wherever the firmware sets bits the emulator does not model
+
+It also writes `messages.csv`, the bus messages in a plain format. `virtulab compare` checks them against a recording from real hardware, which is the start of validating models on a bench: see [`docs/VALIDATION.md`](docs/VALIDATION.md).
+
+Renode's built-in peripherals answer from Renode's own code, which the page names but does not show. The Arm core and the memories are not in the chip's SVD file, so they appear by offset. Tracing needs Renode, so on a machine without it run it in the image: `docker run --rm -v "$PWD:/workspace" virtulab-review trace`.
+
 ## 🎯 Who it's for
 
 Firmware teams in **medical, automotive and industrial** products, and any team of **20+ engineers** where the bench is shared and slow.

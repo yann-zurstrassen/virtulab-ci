@@ -102,6 +102,20 @@ The "Largest symbol size changes" table can list `__preinit_array_start` with a 
 - **Time zero** values are monitor commands, so they apply before the firmware starts. Later values apply on a 1 ms virtual tick, so finer timing than 1 ms is rounded up.
 - **Failed model compilation** is now reported at once, not after the timeout.
 
+## Comparing with hardware (2026-11-04)
+
+- **One plain message format** instead of a logic analyser's own. The vendor's export documentation does not give the I²C column layout, so no converter was written from guesses.
+- **Order, not time:** messages are aligned by sequence. Address and bytes written must match exactly, and read data can have a tolerance. Time is reported, never compared.
+- **The process around it is a draft** in `docs/VALIDATION.md`, with its open questions undecided.
+
+## Trace (2026-11-04)
+
+- **The data:** Renode's `LogAllPeripheralsAccess` gives the instruction address, offset, value and direction of every access. A small generated model marks each virtual millisecond in the same log, so time is accurate to 1 ms.
+- **Names** come from the SVD file Renode ships, matched by peripheral name. Memories and the Arm core are deliberately left unnamed: matching them by name labelled flash memory reads as the flash controller's registers.
+- **Bus messages:** I²C comes from Renode's I²C controller at debug level, which reports the bytes it exchanged with the device. Renode reports no SPI or UART bytes, only SPI chip-select changes. So SPI messages are the data-register writes and reads made while one chip select is low, and UART messages are a port's data-register traffic, split where the direction changes. That holds for the STM32 blocks, whose SVD file names the data register `DR`. A project-defined device's I²C messages are decoded into its registers. Catalog sensors' messages are decoded with the model's own constant names, such as `WhoAmI` or `ReadJedecId`, linked to that line of the model. A cited datasheet row is linked only when its text states the same value in hex. A register the model does not name stays unnamed: that shows where firmware uses more of a chip than the model covers.
+- **"Not modelled" markers** come from Renode's own warnings when firmware sets bits its model ignores. They show where a test result means less than it looks.
+- **Scope:** a recorded run and a static page, not live stepping. Catalog sensors' internal registers and datasheet links are not shown yet.
+
 ## Rules and custom models (2026-10-31)
 
 - **No VirtuLab runtime API.** Data files and rules are settings. Anything beyond them is an ordinary Renode model, listed under `models:` and `repl:`. Renode owns and documents that interface, so there is nothing of ours to version. This is a deliberate, advanced exception to the roadmap's "users never write Renode syntax".

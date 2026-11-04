@@ -1,6 +1,7 @@
 """Subcommands other than `run`: catalog, check, init, ci, ui, demo."""
 
 import json
+import os
 import re
 import shutil
 import sys
@@ -271,6 +272,91 @@ def init(ns) -> int:
 def ui(ns) -> int:
     from .ui.server import serve
     return serve(Path(ns.directory).resolve(), ns.port, open_browser=not ns.no_browser)
+
+
+def trace(ns) -> int:
+    from dataclasses import replace
+
+    from . import trace as recorder
+    from .config import option
+    from .scenarios import parse_cases, with_case
+
+    root = Path(ns.directory).resolve()
+    cfg = config.load(root)
+    if cfg is None:
+        raise VirtulabError(f"No virtulab.yml in {root}. Run `virtulab init` first.")
+    sources = include = None
+    if ns.case:
+        if "scenarios" not in cfg.tests:
+            raise VirtulabError("--case needs tests.scenarios in virtulab.yml")
+        cases = {c.name: c for c in parse_cases(cfg)}
+        if ns.case not in cases:
+            raise VirtulabError(f"No scenario case '{ns.case}'. Cases: {', '.join(cases)}")
+        cfg = with_case(cfg, cases[ns.case])
+        sources = list(option(cfg, "scenarios", "sources"))
+        include = list(option(cfg, "scenarios", "include"))
+    print(f"⏺  Recording {'scenario ' + ns.case if ns.case else 'the unit tests'} on {cfg.board}", flush=True)
+    data = recorder.record(cfg, root, root / ".virtulab", sources, include)
+    page = recorder.write(data, root / ".virtulab" / "trace")
+    kinds = [e["kind"] for e in data["events"]]
+    print(f"✅ {kinds.count('access')} register accesses and {kinds.count('bus')} bus messages "
+          f"over {data['duration_ms']} ms of virtual time")
+    print(f"📄 Open {os.path.relpath(page)} in a browser")
+    return 0
+
+
+def compare(ns) -> int:
+    from . import compare as cmp
+
+    def load(path: str) -> list:
+        p = Path(path)
+        return cmp.from_trace(json.loads(p.read_text())) if p.suffix == ".json" else cmp.read_messages(p)
+
+    size, _, skip = ns.frame.partition("+")
+    if not size.isdigit() or (skip and not skip.isdigit()) or int(size) < 1:
+        raise VirtulabError(f"--frame '{ns.frame}' must look like 2 or 2+1")
+    try:
+        tolerance = [int(t) for t in ns.tolerance.split(",")]
+    except ValueError:
+        raise VirtulabError(f"--tolerance '{ns.tolerance}' must be numbers, e.g. 75 or 75,1311") from None
+    result = cmp.compare(load(ns.twin), load(ns.real), tolerance, (int(size), int(skip or 0)))
+    print(cmp.report(result))
+    return 0 if result.ok else 1
+
+
+def setup(ns) -> int:
+    from . import tools
+    names = [n.strip() for n in ns.only.split(",")] if ns.only else list(tools.TOOLS)
+    unknown = [n for n in names if n not in tools.TOOLS]
+    if unknown:
+        raise VirtulabError(f"Unknown tool {', '.join(unknown)}. Choose from {', '.join(tools.TOOLS)}")
+    skipped = []
+    for name in names:
+        tool = tools.TOOLS[name]
+        if tools.platform_key() not in tool.assets:
+            skipped.append(f"{tool.summary}: no build for {tools.platform_key()}, use the Docker image for it")
+            continue
+        tools.install(tool, force=ns.force)
+    for line in skipped:
+        print(f"⏭️  {line}")
+    print("Run `virtulab doctor` to see what VirtuLab will use.")
+    return 0
+
+
+def doctor(ns) -> int:
+    from . import tools
+    from .check import _tool
+    print(f"Platform {tools.platform_key()}, tools folder {tools.home()}")
+    rows = [("Arm compiler", shutil.which("arm-none-eabi-gcc")), ("Arm GDB", _tool("arm-gdb", "lm3s6965evb")),
+            ("QEMU", shutil.which("qemu-system-arm")), ("Renode", shutil.which("renode")),
+            ("Host C compiler", _tool("cc", "lm3s6965evb")), ("gcov", shutil.which("gcov")),
+            ("STM32F4 register file", str(tools.svd_file()) if tools.svd_file() else None),
+            ("Docker", shutil.which("docker"))]
+    managed = str(tools.home())
+    for label, path in rows:
+        where = "missing" if not path else "installed by virtulab setup" if str(path).startswith(managed) else "system"
+        print(f"{'✅' if path else '❌'} {label:<22} {where:<28} {path or ''}")
+    return 0
 
 
 def demo(ns) -> int:

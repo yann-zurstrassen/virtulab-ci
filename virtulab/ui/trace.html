@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VirtuLab trace</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#d8dde6; --muted:#8a93a5; --accent:#5aa9ff;
+          --read:#58c48b; --write:#f0a35a; --hl:#2a3550; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:15px; margin:0; }
+  header .muted { color:var(--muted); }
+  main { display:grid; grid-template-columns: 250px 1fr 440px; height: calc(100vh - 46px); }
+  section { overflow:auto; border-right:1px solid var(--line); }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:14px 12px 6px; }
+  .chip { margin:8px 12px; padding:10px; border:1px solid var(--accent); border-radius:8px; background:var(--panel); }
+  .chip b { display:block; }
+  .item { margin:4px 12px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--panel); cursor:pointer; display:flex; justify-content:space-between; }
+  .item.off { opacity:.4; }
+  .item small { color:var(--muted); }
+  .toolbar { position:sticky; top:0; background:var(--bg); padding:8px; border-bottom:1px solid var(--line); display:flex; gap:8px; z-index:1; }
+  input[type=search] { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text); padding:5px 8px; border-radius:6px; }
+  table { border-collapse:collapse; width:100%; font-family: ui-monospace, Menlo, monospace; font-size:12px; }
+  td, th { padding:3px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  th { color:var(--muted); font-weight:normal; position:sticky; top:41px; background:var(--bg); }
+  tr.ev { cursor:pointer; }
+  tr.ev:hover { background:#1b2030; }
+  tr.ev.sel { background:var(--hl); }
+  .read { color:var(--read); } .write { color:var(--write); }
+  .detail { padding:0 14px 20px; }
+  pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 0; overflow:auto; font-size:12px; margin:6px 0; }
+  pre div { padding:0 10px; white-space:pre; }
+  pre div.hit { background:var(--hl); border-left:3px solid var(--accent); padding-left:7px; }
+  pre span.n { color:var(--muted); display:inline-block; width:34px; }
+  .fields td { font-size:11.5px; }
+  .fields tr.on td { color:var(--accent); }
+  .tag { font-size:11px; padding:1px 6px; border-radius:10px; border:1px solid var(--line); color:var(--muted); }
+  svg { width:100%; height:90px; background:var(--panel); border:1px solid var(--line); border-radius:6px; }
+  .note { color:var(--muted); font-size:12px; }
+  tr.bus td { color:#c7a6ff; }
+  .warn { color:#f0c35a; }
+  .badge { font-size:10.5px; padding:0 5px; border-radius:8px; border:1px solid #6a5a2a; color:#f0c35a; margin-left:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VirtuLab trace</h1>
+  <span id="summary" class="muted"></span>
+</header>
+<main>
+  <section id="board"></section>
+  <section id="timeline">
+    <div class="toolbar"><input type="search" id="q" placeholder="Filter: register, function, value…">
+      <label class="muted"><input type="checkbox" id="console"> console</label>
+      <label class="muted"><input type="checkbox" id="busonly"> bus messages only</label></div>
+    <table><thead><tr><th>ms</th><th>peripheral</th><th>register</th><th></th><th>value</th><th>firmware</th></tr></thead>
+    <tbody id="rows"></tbody></table>
+  </section>
+  <section id="detail" class="detail"><p class="note">Select an access to see the register, its bit fields, the firmware line that made it and the model code that answered.</p></section>
+</main>
+<script>
+const T = /*TRACE_DATA*/null;
+const $ = id => document.getElementById(id);
+const hex = (v, w) => "0x" + v.toString(16).toUpperCase().padStart(w || 8, "0");
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const hidden = new Set();
+let selected = null;
+
+function code(file, line) {
+  const f = T.files[file];
+  if (!f) return "";
+  const lines = f.text.split("\n"), start = Math.max(1, line - 4), end = Math.min(lines.length, line + 4);
+  let out = "";
+  for (let n = start; n <= end; n++)
+    out += `<div class="${n === line ? "hit" : ""}"><span class="n">${n}</span>${esc(lines[n - 1])}</div>`;
+  return `<pre>${out}</pre>`;
+}
+
+function board() {
+  let h = `<h2>Board</h2><div class="chip"><b>${esc(T.board.description)}</b><small class="note">${esc(T.board.cpu)} · ${esc(T.board.name)}</small></div>`;
+  if (T.modules.length) {
+    h += `<h2>Attached</h2>`;
+    for (const m of T.modules)
+      h += `<div class="item"><span>${esc(m.name)}</span><small>${esc(m.model)} · ${esc(m.bus)}</small></div>`;
+  }
+  h += `<h2>Peripherals used</h2>`;
+  for (const [p, n] of Object.entries(T.counts).sort((a, b) => b[1] - a[1])) {
+    const d = T.registers[p] ? T.registers[p].description : "";
+    h += `<div class="item ${hidden.has(p) ? "off" : ""}" data-p="${esc(p)}" title="${esc(d)}"><span>${esc(p)}</span><small>${n}</small></div>`;
+  }
+  h += `<p class="note" style="margin:12px">Click a peripheral to hide or show it. Register names and fields come from ${esc(T.svd || "no SVD file")}.</p>`;
+  $("board").innerHTML = h;
+  for (const el of $("board").querySelectorAll(".item[data-p]"))
+    el.onclick = () => { const p = el.dataset.p; hidden.has(p) ? hidden.delete(p) : hidden.add(p); board(); rows(); };
+}
+
+function ascii(a) {
+  return a.map(x => x === 13 ? "\\r" : x === 10 ? "\\n" : (x >= 32 && x < 127 ? String.fromCharCode(x) : "\\x" + x.toString(16).padStart(2, "0"))).join("");
+}
+
+function busText(e) {
+  const b = a => a.map(x => x.toString(16).toUpperCase().padStart(2, "0")).join(" ");
+  if (e.protocol === "uart") return `${e.write.length ? "sent " : "received "}"${ascii(e.write.length ? e.write : e.read)}"`;
+  if (e.decoded && e.decoded.length)
+    return e.decoded.map(d => `${d.op === "read" ? "read" : "set"} ${d.register} = ${d.value}`).join(", ");
+  if (e.catalog) {
+    const c = e.catalog, label = c.name || c.value;
+    const d = !c.data.length ? "" : c.op === "read" ? " = " + b(c.data) : c.op === "instruction" ? " sent " + b(c.data) : " ← " + b(c.data);
+    const got = (c.received || []).length ? " got " + b(c.received) : "";
+    return `${c.op} ${label}${c.name ? " (" + c.value + ")" : ""}${d}${got}`;
+  }
+  return `${e.write.length ? "write " + b(e.write) : ""}${e.write.length && e.read.length ? " · " : ""}${e.read.length ? "read " + b(e.read) : ""}`;
+}
+
+function rows() {
+  const q = $("q").value.toLowerCase(), showConsole = $("console").checked, busOnly = $("busonly").checked;
+  let h = "", shown = 0;
+  T.events.forEach((e, i) => {
+    if (e.kind === "unmodelled" || e.kind === "select") return;
+    if (e.kind === "access" && (busOnly || hidden.has(e.peripheral) || (e.console && !showConsole))) return;
+    if (e.kind === "bus" && hidden.has(e.bus)) return;
+    const text = (e.kind === "bus" ? [e.bus, e.device, e.model, busText(e)]
+                                    : [e.peripheral, e.register, e.function, e.file, hex(e.value)]).join(" ").toLowerCase();
+    if (q && !text.includes(q)) return;
+    if (++shown > 5000) return;
+    if (e.kind === "bus") {
+      const to = e.protocol === "spi" ? "CS " + e.address : e.protocol === "uart" ? "" : hex(e.address, 2);
+      h += `<tr class="ev bus ${i === selected ? "sel" : ""}" data-i="${i}"><td>${e.t}</td><td>${esc(e.bus)}${to ? " → " + to : ""}</td>
+        <td>${esc(e.device || "?")}</td><td>⇄</td><td colspan="2">${esc(busText(e))}</td></tr>`;
+      return;
+    }
+    h += `<tr class="ev ${i === selected ? "sel" : ""}" data-i="${i}"><td>${e.t}</td><td>${esc(e.peripheral)}</td>
+      <td>${esc(e.register || hex(e.offset, 2))}${e.unmodelled ? '<span class="badge" title="The emulator does not model some bits written here">⚠ not modelled</span>' : ""}</td><td class="${e.op}">${e.op === "read" ? "R" : "W"}</td>
+      <td>${hex(e.value)}</td><td>${esc(e.function || "")}${e.line ? ` <span class="note">${esc(e.file)}:${e.line}</span>` : ""}</td></tr>`;
+  });
+  if (shown > 5000) h += `<tr><td colspan="6" class="note">${shown - 5000} more: narrow the filter</td></tr>`;
+  $("rows").innerHTML = h;
+  for (const tr of $("rows").querySelectorAll("tr.ev")) tr.onclick = () => show(+tr.dataset.i);
+}
+
+function chart(e) {
+  const same = T.events.filter(x => x.kind === "access" && x.peripheral === e.peripheral && x.offset === e.offset && x.op === e.op);
+  if (same.length < 2) return "";
+  const W = 400, H = 80, t0 = 0, t1 = Math.max(1, T.duration_ms);
+  const vs = same.map(x => x.value), lo = Math.min(...vs), hi = Math.max(...vs) || 1;
+  const pts = same.map(x => `${(x.t - t0) / (t1 - t0) * W},${H - 6 - (x.value - lo) / ((hi - lo) || 1) * (H - 12)}`).join(" ");
+  return `<h2>${esc(e.register || "register")} ${e.op}s over time</h2>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline fill="none" stroke="#5aa9ff" stroke-width="1.5" points="${pts}"/>
+    <line x1="${e.t / t1 * W}" x2="${e.t / t1 * W}" y1="0" y2="${H}" stroke="#f0a35a"/></svg>
+    <p class="note">${same.length} ${e.op}s from ${hex(lo)} to ${hex(hi)} across ${T.duration_ms} ms</p>`;
+}
+
+function showBus(e) {
+  const b = a => a.map(x => hex(x, 2)).join(" ") || "—";
+  const how = e.protocol === "spi" ? `chip select ${e.address}. Rebuilt from the firmware's SPI data-register accesses while that line was low.`
+            : e.protocol === "uart" ? `Rebuilt from the firmware's accesses to ${esc(e.bus)}'s data register.`
+            : `address ${hex(e.address, 2)}. Reported by the emulated I²C controller.`;
+  let h = `<h2>${e.t} ms · ${esc((e.protocol || "i2c").toUpperCase())} message</h2><div style="font-size:15px"><b>${esc(e.bus)} → ${esc(e.device || "?")}</b></div>
+    <p class="note">${esc(e.model)}, ${how}</p>
+    <table class="fields"><tr><td>${e.protocol === "uart" ? "sent to device" : "bytes written"}</td><td>${b(e.write)}</td></tr><tr><td>${e.protocol === "uart" ? "received from device" : "bytes read"}</td><td>${b(e.read)}</td></tr>
+    ${e.protocol === "uart" ? `<tr><td>as text</td><td>${esc(ascii(e.write.length ? e.write : e.read))}</td></tr>` : ""}</table>`;
+  if (e.catalog) {
+    const c = e.catalog;
+    h += `<h2>Decoded by the model</h2><table class="fields"><tr class="on"><td>${esc(c.op)}</td><td>${esc(c.name || "unnamed")}</td><td>${esc(c.value)}</td><td>${b(c.data)}</td></tr>${(c.received || []).length ? `<tr><td>received</td><td colspan="3">${b(c.received)}</td></tr>` : ""}</table>`;
+    for (const r of c.datasheet) h += `<p class="note">Datasheet: ${esc(r.topic)}${r.source ? " · " + esc(r.source) : ""}</p>`;
+    if (c.model) h += `<h2>Model: the code that answers ${esc(c.name || c.value)}</h2><div class="note">${esc(c.model.file)}:${c.model.line}</div>${code(c.model.file, c.model.line)}`;
+  }
+  const cat = T.catalog && T.catalog[e.device];
+  if (cat && cat.documents && cat.documents.length)
+    h += `<h2>Datasheet</h2>` + cat.documents.map(d => `<p class="note">${d.url ? `<a href="${esc(d.url)}" style="color:var(--accent)">${esc(d.title)}</a>` : esc(d.title)}, ${esc(d.revision || "")}</p>`).join("");
+  if (cat && cat.source && !(e.catalog && e.catalog.model)) h += `<h2>Model: the device's code in VirtuLab</h2><div class="note">${esc(cat.source)}</div>${code(cat.source, 1)}`;
+  if (e.decoded && e.decoded.length) {
+    h += `<h2>Registers, from the project's register list</h2><table class="fields">`;
+    for (const d of e.decoded) h += `<tr class="on"><td>${esc(d.register)}</td><td>${d.op}</td><td>${d.value}</td><td>${hex(d.value, d.size * 2)}</td></tr>`;
+    h += `</table>`;
+  }
+  const before = T.events.slice(0, T.events.indexOf(e)).reverse().find(x => x.kind === "access" && x.peripheral === e.bus && x.line);
+  if (before) h += `<h2>Firmware: the driver around this message</h2><div class="note">${esc(before.function || "")} · ${esc(before.file)}:${before.line}</div>${code(before.file, before.line)}`;
+  $("detail").innerHTML = h;
+}
+
+function show(i) {
+  selected = i;
+  const e = T.events[i];
+  if (e.kind === "bus") { showBus(e); rows(); return; }
+  const reg = T.registers[e.peripheral] && T.registers[e.peripheral].registers[e.offset];
+  let h = `<h2>${e.t} ms · ${e.op === "read" ? "read" : "write"}</h2>
+    <div style="font-size:15px"><b>${esc(e.peripheral)}.${esc(e.register || hex(e.offset, 2))}</b> = <code>${hex(e.value)}</code></div>`;
+  if (reg) h += `<p class="note">${esc(reg.description)}</p>`;
+  if (e.unmodelled) h += `<p class="warn">⚠ The emulator does not model bits [${esc(e.unmodelled.bits)}] of this write${e.unmodelled.tags ? " (" + esc(e.unmodelled.tags) + ")" : ""}. On real silicon they have an effect; here they are ignored.</p>`;
+  if (e.note) h += `<p class="note">${esc(e.note)}. Offset ${hex(e.offset, 3)} from the block's base.</p>`;
+  if (e.fields && e.fields.length) {
+    h += `<h2>Bit fields</h2><table class="fields">`;
+    for (const f of e.fields)
+      h += `<tr class="${f.value ? "on" : ""}" title="${esc(f.description)}"><td>${esc(f.name)}</td>
+        <td>[${f.offset + f.width - 1 === f.offset ? f.offset : (f.offset + f.width - 1) + ":" + f.offset}]</td><td>${f.value}</td>
+        <td class="note">${esc(f.description).slice(0, 48)}</td></tr>`;
+    h += `</table>`;
+  }
+  h += chart(e);
+  h += `<h2>Firmware: what made this access</h2>`;
+  h += e.line ? `<div class="note">${esc(e.function || "")} · ${esc(e.file)}:${e.line} · instruction ${hex(e.pc)}</div>${code(e.file, e.line)}`
+              : `<p class="note">Instruction ${hex(e.pc)}${e.function ? " in " + esc(e.function) : ""}: no source line (library or startup code).</p>`;
+  if (e.model) {
+    h += `<h2>Model: what answered</h2><div class="note">${esc(e.model.file)}:${e.model.line} <span class="tag">generated by VirtuLab</span></div>${code(e.model.file, e.model.line)}`;
+  } else if (T.registers[e.peripheral] || e.note) {
+    h += `<h2>Model</h2><p class="note">Renode's built-in ${esc(e.peripheral)} model answered. Its code is in Renode, not in this project.</p>`;
+  }
+  $("detail").innerHTML = h;
+  rows();
+}
+
+const nb = T.events.filter(e => e.kind === "bus").length, nu = T.events.filter(e => e.unmodelled).length;
+$("summary").textContent = `${T.board.description} · ${T.events.filter(e => e.kind === "access").length} register accesses · ${nb} bus messages · ${nu} accesses with bits the emulator ignores over ${T.duration_ms} ms of virtual time · exit code ${T.exit_code ?? "none"}${T.timed_out ? " (timed out)" : ""}`;
+$("q").oninput = rows;
+$("console").onchange = rows;
+$("busonly").onchange = rows;
+board();
+rows();
+</script>
+</body>
+</html>

@@ -391,6 +391,25 @@ def build_parser() -> argparse.ArgumentParser:
     ds.add_argument("--markdown", action="store_true", help="print as Markdown (all sensors when none is named)")
     ds.add_argument("--issues", action="store_true", help="print the datasheet problems found so far, as Markdown")
 
+    tr = sub.add_parser("trace", help="record every register access of a run and show it as a page")
+    tr.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
+    tr.add_argument("--case", metavar="NAME", help="trace this case of tests.scenarios instead of the unit tests")
+
+    cmp = sub.add_parser("compare", help="compare the twin's bus messages with a recording from real hardware")
+    cmp.add_argument("twin", help="the twin's messages: .virtulab/trace/messages.csv, or trace.json")
+    cmp.add_argument("real", help="the hardware recording, in the same CSV format")
+    cmp.add_argument("--tolerance", default="0", metavar="COUNTS[,COUNTS...]",
+                     help="accept read values within this many counts, one number per value of a reply "
+                          "used in turn, e.g. 75,1311 (default: exact)")
+    cmp.add_argument("--frame", default="2", metavar="VALUE[+SKIP]",
+                     help="read data layout: bytes per value, then bytes to skip, e.g. 2+1 for "
+                          "value plus checksum (default: 2)")
+
+    st = sub.add_parser("setup", help="download the toolchain, QEMU and Renode, so VirtuLab runs without Docker")
+    st.add_argument("--only", metavar="TOOLS", help="comma separated: gcc, qemu, renode, svd (default: all)")
+    st.add_argument("--force", action="store_true", help="download again even when installed")
+    sub.add_parser("doctor", help="show which tools VirtuLab will use, and where they come from")
+
     demo = sub.add_parser("demo", help="create a sample project and run it end to end")
     demo.add_argument("-C", "--directory", default="virtulab-demo", help="where to create it")
     demo.add_argument("--seconds", type=int, default=5, help="fuzzing time budget")
@@ -465,6 +484,8 @@ def run_command(ns: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .tools import activate
+    activate()
     ns = build_parser().parse_args(argv)
     try:
         if ns.command == "boards":

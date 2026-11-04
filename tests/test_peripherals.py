@@ -77,6 +77,18 @@ class ConfigTest(unittest.TestCase):
             with self.assertRaises(VirtulabError, msg=str(bad)):
                 cfg(peripherals={"tank": TANK}, stimulus=[bad])
 
+    def test_a_yes_no_sensor_input_starts_as_true_or_false(self):
+        repl = config.renode_repl(cfg(board="stm32f4_discovery", modules={"skin": {"model": "sht31", "bus": "i2c1"}},
+                                      stimulus=[{"at": "0ms", "set": "skin.CorruptCrc", "value": 0},
+                                                {"at": "0ms", "set": "skin.Temperature", "value": 36.8}]), None)
+        self.assertIn("sysbus.i2c1.skin CorruptCrc false", repl)
+        self.assertIn("sysbus.i2c1.skin Temperature 36.8", repl)
+
+    def test_a_scenario_can_say_what_it_is_about(self):
+        cases = parse_cases(cfg(board="stm32f4_discovery", tests={"scenarios": {"sources": ["s.c"], "cases": {
+            "fall": {"description": "The patient falls.", "expect": "FALL=YES"}}}}))
+        self.assertEqual(cases[0].description, "The patient falls.")
+
     def test_the_board_check_catches_wiring_and_targets(self):
         def errors(**extra):
             return " ".join(f.message for f in check(cfg(**extra), None, tools=False).errors)

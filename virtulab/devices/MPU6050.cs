@@ -54,6 +54,21 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
             }
         }
 
+        // Wire faults, the same in every VirtuLab I2C model. Silent: every byte reads 0xFF, as an idle
+        // bus does (Renode cannot refuse an address, so the controller still sees an acknowledge).
+        // Garbled: bits flipped in every byte, as on a noisy line.
+        public bool Silent { get; set; }
+        public bool Garbled { get; set; }
+
+        private byte[] Wire(byte[] bytes)
+        {
+            for(var i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = Silent ? (byte)0xFF : Garbled ? (byte)(bytes[i] ^ 0x24) : bytes[i];
+            }
+            return bytes;
+        }
+
         public byte[] Read(int count = 1)
         {
             var result = new byte[count];
@@ -62,7 +77,7 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
                 result[i] = ReadRegister(pointer);
                 pointer = (pointer + 1) & 0xFF;
             }
-            return result;
+            return Wire(result);
         }
 
         public void FinishTransmission()
@@ -71,6 +86,8 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
 
         public void Reset()
         {
+            Silent = false;
+            Garbled = false;
             Array.Clear(registers, 0, registers.Length);
             registers[PowerManagement1] = 0x40;
             pointer = 0;

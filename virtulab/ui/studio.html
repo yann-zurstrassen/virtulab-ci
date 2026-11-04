@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VirtuLab Studio</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#141821; --panel2:#1a1f2b; --line:#262c3a; --text:#e3e7ef; --muted:#8b94a7;
+          --accent:#5aa9ff; --ok:#4fd18b; --bad:#ff5d5d; --warn:#ffc94d; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--text); background:var(--bg);
+         display:grid; grid-template-rows:56px 1fr; }
+  header { display:flex; align-items:center; gap:16px; padding:0 18px; border-bottom:1px solid var(--line);
+           background:linear-gradient(180deg, #121622, #0e1119); }
+  .logo { font-weight:700; font-size:15px; } .logo span { color:var(--accent); }
+  .proj { color:var(--muted); font-size:13px; } .proj b { color:var(--text); }
+  .tabs { display:flex; gap:4px; background:#0a0c11; border:1px solid var(--line); border-radius:10px; padding:3px; margin:0 auto; }
+  .tabs button { background:none; border:0; color:var(--muted); font:inherit; font-weight:600; padding:6px 18px; border-radius:7px; cursor:pointer; }
+  .tabs button.on { background:var(--panel2); color:var(--text); box-shadow:0 0 0 1px var(--line) inset; }
+  .tabs button .k { color:#4b5468; font-weight:500; margin-left:6px; font-size:11px; }
+  .job { min-width:220px; text-align:right; color:var(--muted); font-size:12.5px; }
+  .job.run { color:var(--warn); } .job.ok { color:var(--ok); } .job.bad { color:var(--bad); }
+  .pane { display:none; min-height:0; } .pane.on { display:grid; }
+  iframe { border:0; width:100%; height:100%; background:var(--bg); display:block; }
+  /* code */
+  #code { grid-template-columns:270px 1fr; }
+  .tree { border-right:1px solid var(--line); overflow:auto; padding:10px 8px; background:#0e1118; }
+  .tree .dir { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin:12px 8px 4px; }
+  .tree button { display:block; width:100%; text-align:left; background:none; border:0; color:#c8cedb; font:13px ui-monospace, Menlo, monospace;
+                 padding:4px 10px; border-radius:6px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tree button:hover { background:#161b26; } .tree button.on { background:#1b2740; color:#fff; }
+  .tree .group { margin:14px 4px 2px; padding:6px 8px; border-radius:8px; font-size:11.5px; font-weight:700; letter-spacing:.04em; }
+  .tree .group small { display:block; font-weight:400; letter-spacing:0; color:var(--muted); margin-top:1px; }
+  .tree .group.yours { color:#7cc4ff; background:rgba(90,169,255,.08); }
+  .tree .group.project { color:#ffd36b; background:rgba(255,201,77,.08); }
+  .tree .group.starter { color:#c4a7ff; background:rgba(160,120,255,.08); }
+  .tree .group.virtulab { color:#5fd4c4; background:rgba(60,200,180,.08); }
+  .tree button.yours { border-left:3px solid #5aa9ff; }
+  .tree button.project { border-left:3px solid #ffc94d; color:#ffe2a0; }
+  .badge.project { background:rgba(255,201,77,.14); color:#ffd36b; }
+  .src.project { background:linear-gradient(90deg, rgba(255,201,77,.06), transparent 40%); }
+  .src.project div::before { border-right:2px solid rgba(255,201,77,.55); margin-right:10px; }
+  .tree button.starter, .tree button.edited { border-left:3px solid #a078ff; color:#cdbdf5; }
+  .tree button.virtulab { border-left:3px solid #3cc8b4; color:#a8e6dc; }
+  .tree button .ed { color:#ffc94d; font-size:11px; margin-left:6px; }
+  .badge { font-size:11.5px; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .badge.yours { background:rgba(90,169,255,.15); color:#7cc4ff; }
+  .badge.starter, .badge.edited { background:rgba(160,120,255,.15); color:#c4a7ff; }
+  .badge.virtulab { background:rgba(60,200,180,.15); color:#5fd4c4; }
+  .src.starter, .src.edited { background:linear-gradient(90deg, rgba(160,120,255,.07), transparent 40%); }
+  .src.virtulab { background:linear-gradient(90deg, rgba(60,200,180,.07), transparent 40%); }
+  .src.yours div::before, .src.starter div::before, .src.edited div::before, .src.virtulab div::before { border-right:2px solid transparent; margin-right:10px; }
+  .src.yours div::before { border-right-color:rgba(90,169,255,.5); }
+  .src.starter div::before, .src.edited div::before { border-right-color:rgba(160,120,255,.6); }
+  .src.virtulab div::before { border-right-color:rgba(60,200,180,.6); }
+  .editor { display:grid; grid-template-rows:40px 1fr; min-height:0; }
+  .editor .bar { display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid var(--line); color:var(--muted); font-size:13px; }
+  .editor .bar b { color:var(--text); font-family:ui-monospace, Menlo, monospace; font-weight:600; }
+  .src { overflow:auto; font:13px/1.6 ui-monospace, Menlo, monospace; padding:8px 0 40px; counter-reset:ln; }
+  .src div { white-space:pre; padding:0 16px 0 0; }
+  .src div::before { counter-increment:ln; content:counter(ln); display:inline-block; width:52px; padding-right:16px; text-align:right; color:#3e465a; }
+  .src div.hl { background:rgba(255,201,77,.16); box-shadow:inset 3px 0 0 var(--warn); }
+  .t-com { color:#5f6b85; font-style:italic; } .t-str { color:#a5d6a7; } .t-num { color:#f7b267; } .t-kw { color:#c792ea; }
+  .t-pre { color:#ff9e64; } .t-fn { color:#82aaff; } .t-key { color:#7fdbca; } .t-type { color:#ffcb6b; }
+  /* test */
+  #test { grid-template-columns:340px 1fr; }
+  .side { border-right:1px solid var(--line); overflow:auto; padding:14px 14px 30px; background:#0e1118; }
+  .side h3 { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:16px 2px 8px; font-weight:600; }
+  .side h3:first-child { margin-top:0; }
+  .seg { display:flex; background:#0a0c11; border:1px solid var(--line); border-radius:10px; padding:3px; gap:3px; }
+  .seg button { flex:1; background:none; border:0; color:var(--muted); font:inherit; font-weight:600; padding:7px 8px; border-radius:7px; cursor:pointer; }
+  .seg button.on { background:var(--panel2); color:var(--text); box-shadow:0 0 0 1px var(--line) inset; }
+  .flags { color:var(--muted); font:12px ui-monospace, Menlo, monospace; margin:6px 2px 0; min-height:16px; }
+  .case { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; cursor:default; }
+  .case.on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .case .name { font-weight:700; font-size:15px; text-transform:capitalize; }
+  .case .desc { color:#b9c1cf; font-size:12.5px; margin:4px 0 8px; }
+  .tag { display:inline-block; font:11.5px ui-monospace, Menlo, monospace; padding:2px 7px; border-radius:6px; margin:0 4px 4px 0; }
+  .tag.must { background:rgba(79,209,139,.12); color:var(--ok); } .tag.never { background:rgba(255,93,93,.12); color:var(--bad); }
+  .tag.glitch { background:rgba(255,201,77,.12); color:var(--warn); }
+  .row { display:flex; gap:8px; margin-top:8px; align-items:center; }
+  button.go { background:var(--accent); color:#06101f; border:0; border-radius:8px; font:inherit; font-weight:700; padding:6px 14px; cursor:pointer; }
+  button.go.alt { background:var(--panel2); color:var(--text); box-shadow:0 0 0 1px var(--line) inset; font-weight:600; }
+  button.go.warn { background:var(--warn); }
+  button.go:disabled { opacity:.45; cursor:not-allowed; }
+  .row small { color:var(--muted); }
+  .viewer { display:grid; grid-template-rows:40px 1fr; min-height:0; }
+  .viewer .bar { display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid var(--line); color:var(--muted); font-size:13px; }
+  .viewer .bar b { color:var(--text); }
+  .stage { position:relative; min-height:0; }
+  .progress { position:absolute; inset:0; display:none; grid-template-rows:auto 1fr; background:var(--bg); padding:22px; gap:14px; }
+  .progress.on { display:grid; }
+  .progress .head { display:flex; align-items:center; gap:12px; font-size:16px; font-weight:600; }
+  .spin { width:18px; height:18px; border-radius:50%; border:2.5px solid #2b3345; border-top-color:var(--warn); animation:sp 0.9s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .progress pre { margin:0; background:#07090d; border:1px solid var(--line); border-radius:10px; padding:12px 14px; overflow:auto;
+                  font:12.5px/1.5 ui-monospace, Menlo, monospace; color:#b9c1cf; white-space:pre-wrap; }
+  .empty { position:absolute; inset:0; background:var(--bg); display:grid; place-items:center; color:var(--muted); text-align:center; padding:40px; overflow:auto; }
+  .dash { width:min(920px, 100%); text-align:left; }
+  .dash h1 { color:var(--text); font-size:22px; margin:0 0 4px; } .dash p { margin:0 0 18px; }
+  .tiles { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; cursor:pointer; transition:border-color .15s; }
+  .tile:hover { border-color:var(--accent); }
+  .tile small { display:block; color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; font-weight:600; }
+  .tile b { display:block; font-size:30px; margin:4px 0 2px; color:var(--text); }
+  .tile b.ok { color:var(--ok); } .tile b.bad { color:var(--bad); } .tile b.warn { color:var(--warn); }
+  .tile span { color:#b9c1cf; font-size:13px; }
+  .tile.off { cursor:default; opacity:.55; }
+  .empty b { display:block; color:var(--text); font-size:18px; margin-bottom:6px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Virtu<span>Lab</span> Studio</div>
+  <div class="proj" id="proj"></div>
+  <nav class="tabs">
+    <button data-tab="board" class="on">Board<span class="k">1</span></button>
+    <button data-tab="code">Code<span class="k">2</span></button>
+    <button data-tab="test">Test<span class="k">3</span></button>
+  </nav>
+  <div class="job" id="job"></div>
+</header>
+
+<section class="pane on" id="board"><iframe id="setup" title="Board setup"></iframe></section>
+
+<section class="pane" id="code">
+  <nav class="tree" id="tree"></nav>
+  <div class="editor"><div class="bar" id="fbar">Pick a file</div><div class="src" id="src"></div></div>
+</section>
+
+<section class="pane" id="test">
+  <aside class="side" id="side"></aside>
+  <div class="viewer">
+    <div class="bar" id="vbar">Run a scenario to watch it on the board</div>
+    <div class="stage">
+      <iframe id="view" title="Result"></iframe>
+      <div class="empty" id="empty"></div>
+      <div class="progress" id="progress"><div class="head"><div class="spin"></div><span id="ptitle"></span><small id="ptime" style="color:var(--muted)"></small></div><pre id="pout"></pre></div>
+    </div>
+  </div>
+</section>
+
+<script>
+"use strict";
+const token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function api(path, body) {
+  const r = await fetch(path, { method: body ? "POST" : "GET", headers: { "X-VirtuLab-Token": token, "Content-Type": "application/json" },
+                                body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json(); if (!r.ok) throw new Error(d.error || r.statusText); return d;
+}
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "default";
+let P = null, variant = "as written", current = null;
+
+/* ---------- tabs ---------- */
+function tab(name) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === name));
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => tab(b.dataset.tab));
+document.addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("input, textarea")) return;
+  if (e.key === "1") tab("board"); if (e.key === "2") tab("code"); if (e.key === "3") tab("test");
+});
+$("setup").src = "/setup#token=" + encodeURIComponent(token) + "&readonly=1";
+
+/* ---------- code ---------- */
+const C_KW = /^(if|else|for|while|do|return|switch|case|break|continue|static|const|volatile|struct|typedef|enum|union|sizeof|void|bool|true|false|int|char|unsigned|signed|long|short|float|double|default|goto|extern|inline)$/;
+function highlight(text, path) {
+  const out = [];
+  if (/\.(ya?ml)$/.test(path)) {
+    for (const line of text.split("\n")) {
+      let h = esc(line).replace(/(#.*)$/, '<span class="t-com">$1</span>');
+      h = h.replace(/^(\s*-?\s*)([\w.-]+)(:)/, '$1<span class="t-key">$2</span>$3');
+      out.push(h);
+    }
+    return out;
+  }
+  if (/\.csv$/.test(path)) return text.split("\n").map((l, i) => i === 0 ? `<span class="t-key">${esc(l)}</span>` : esc(l).replace(/(-?\d+(\.\d+)?)/g, '<span class="t-num">$1</span>'));
+  if (!/\.(c|h|cc|cpp|hpp|cs)$/.test(path)) return text.split("\n").map(esc);
+  // C: one pass over the whole text, so block comments can span lines
+  const re = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(^[ \t]*#[^\n]*)|\b(0x[0-9a-fA-F]+u?|\d+(?:\.\d+)?u?)\b|\b([A-Za-z_]\w*)\b(?=\s*\()|\b([A-Za-z_]\w*)\b/gm;
+  let html = "", last = 0, m;
+  while ((m = re.exec(text))) {
+    html += esc(text.slice(last, m.index)); last = re.lastIndex;
+    const [all, com, str, pre, num, fn, word] = m;
+    if (com) html += `<span class="t-com">${esc(com)}</span>`;
+    else if (str) html += `<span class="t-str">${esc(str)}</span>`;
+    else if (pre) html += `<span class="t-pre">${esc(pre)}</span>`;
+    else if (num) html += `<span class="t-num">${esc(num)}</span>`;
+    else if (fn) html += C_KW.test(fn) ? `<span class="t-kw">${fn}</span>` : `<span class="t-fn">${fn}</span>`;
+    else if (word) html += C_KW.test(word) ? `<span class="t-kw">${word}</span>` : /_t$/.test(word) ? `<span class="t-type">${word}</span>` : word;
+  }
+  html += esc(text.slice(last));
+  // keep spans balanced per line: close at line end, reopen on the next
+  const lines = [], open = [];
+  for (const raw of html.split("\n")) {
+    let line = open.map(c => `<span class="${c}">`).join("") + raw;
+    const tags = raw.match(/<span class="[^"]+">|<\/span>/g) || [];
+    for (const t of tags) t === "</span>" ? open.pop() : open.push(t.slice(13, -2));
+    lines.push(line + "</span>".repeat(open.length));
+  }
+  return lines;
+}
+async function openFile(path, line, focus = true) {
+  if (focus) tab("code");
+  document.querySelectorAll(".tree button").forEach(b => b.classList.toggle("on", b.dataset.path === path));
+  const f = await api("/api/studio/file?path=" + encodeURIComponent(path));
+  const lines = highlight(f.text.replace(/\n$/, ""), path);
+  const origin = f.origin || origins[path] || "yours";
+  $("fbar").innerHTML = `<b>${esc(path)}</b><span class="badge ${origin}">${ORIGIN_LABEL[origin]}</span><span>${lines.length} lines</span>`;
+  $("src").className = "src " + origin;
+  $("src").innerHTML = lines.map((l, i) => `<div id="ln${i + 1}"${line === i + 1 ? ' class="hl"' : ""}>${l || " "}</div>`).join("");
+  if (line) { const d = $("ln" + line); if (d) d.scrollIntoView({ block: "center" }); } else $("src").scrollTop = 0;
+}
+const ORIGIN = {
+  project: ["Project file", "setup written by VirtuLab, scenarios by you"],
+  yours: ["Your firmware", "written for this product"],
+  starter: ["From VirtuLab: starter drivers", "generated for your sensors, yours to change"],
+  virtulab: ["VirtuLab: runtime and sensor models", "read-only: linked in, or emulating the chips"],
+};
+const ORIGIN_LABEL = { project: "setup from VirtuLab · scenarios and edits by you", yours: "your code", starter: "VirtuLab starter, unchanged", edited: "VirtuLab starter, edited by you",
+                       virtulab: "VirtuLab, read-only" };
+let origins = {};
+async function loadTree() {
+  const res = await api("/api/studio/files");
+  origins = res.origins;
+  const section = o => o === "edited" ? "starter" : o;
+  let html = "";
+  for (const sec of ["project", "yours", "starter", "virtulab"]) {
+    const files = res.files.filter(f => section(origins[f]) === sec);
+    if (!files.length) continue;
+    html += `<div class="group ${sec}">${ORIGIN[sec][0]}<small>${ORIGIN[sec][1]}</small></div>`;
+    const groups = {};
+    for (const f of files) { const dir = f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : ""; (groups[dir] = groups[dir] || []).push(f); }
+    for (const d of Object.keys(groups).sort((a, b) => (b === "") - (a === "") || a.localeCompare(b))) {
+      if (d) html += `<div class="dir">${esc(d.replace(/^virtulab\//, ""))}</div>`;
+      html += groups[d].map(f => `<button class="${origins[f]}" data-path="${esc(f)}">${esc(f.split("/").pop())}${origins[f] === "edited" ? '<span class="ed">edited</span>' : ""}</button>`).join("");
+    }
+  }
+  $("tree").innerHTML = html;
+  $("tree").onclick = e => { const b = e.target.closest("button"); if (b) openFile(b.dataset.path); };
+  const first = res.files.find(f => f === "virtulab.yml") || res.files[0];
+  if (first) await openFile(first, null, false);
+}
+
+/* ---------- test ---------- */
+const has = rel => P.results.includes(rel);
+function renderSide() {
+  const v = slug(variant), flags = P.variants[variant];
+  let h = `<div class="row" style="margin:0 0 10px"><button class="go alt" data-dash style="width:100%">Overview of this build</button></div><h3>Firmware build</h3><div class="seg">${Object.keys(P.variants).map(n =>
+    `<button data-v="${esc(n)}" class="${n === variant ? "on" : ""}">${esc(n)}</button>`).join("")}</div>
+    <div class="flags">${flags ? "extra compiler flags: " + esc(flags) : "the code as it is in the project"}</div>`;
+  if (P.tests.includes("unit"))
+    h += `<h3>Unit tests</h3><div class="case"><div class="desc" style="margin:0">The project's tests, built for the chip and run on the virtual board.</div>
+      <div class="row"><button class="go alt" data-job="unit">Run unit tests</button></div></div>`;
+  h += `<h3>Scenarios</h3>`;
+  for (const c of P.cases) {
+    const key = `runs/${slug(c.name)}--${v}/board.html`, rec = has(key);
+    h += `<div class="case${current === key ? " on" : ""}"><div class="name">${esc(c.name.replace(/_/g, " "))}</div>
+      <div class="desc">${esc(c.description || "")}</div>
+      ${c.expect.map(x => `<span class="tag must">must report ${esc(x)}</span>`).join("")}
+      ${c.forbid.map(x => `<span class="tag never">never ${esc(x)}</span>`).join("")}
+      ${c.faults.length ? `<span class="tag glitch">glitches from ${c.faults.join(", ")} ms</span>` : ""}
+      <div class="row">${rec ? `<button class="go" data-open="${key}">Watch on the board</button><button class="go alt" data-job="trace" data-case="${esc(c.name)}">Re-run</button>`
+                              : `<button class="go" data-job="trace" data-case="${esc(c.name)}">Run on the board</button><small>about 10 s</small>`}</div></div>`;
+  }
+  if (P.cases.some(c => c.forbid.length)) {
+    const key = `faults/${v}/faults.html`, rec = has(key);
+    h += `<h3>Fault scenarios · generated</h3><div class="case"><div class="desc" style="margin:0">From your scenarios, VirtuLab generates one case per sensor fault (stuck, saturated, noisy, silent, garbled) at every moment the inputs change, and judges each with the scenario's own <i>never</i> rule.</div>
+      <div class="row">${rec ? `<button class="go" data-open="${key}">Open the fault scenarios</button><button class="go alt" data-job="faults">Re-generate</button>`
+                              : `<button class="go" data-job="faults">Generate fault scenarios</button><small>a few minutes</small>`}</div></div>`;
+  }
+  if (P.cases.some(c => c.faults.length)) {
+    const key = `sweeps/${v}/sweep.html`, rec = has(key);
+    h += `<h3>Glitch sweep</h3><div class="case"><div class="desc" style="margin:0">Replays the scenarios with glitches, skipping each instruction of the target code once, and shows what every skip did.</div>
+      <div class="row">${rec ? `<button class="go warn" data-open="${key}">Open the sweep</button><button class="go alt" data-job="sweep">Re-run</button>`
+                              : `<button class="go warn" data-job="sweep">Run the sweep</button><small>a few minutes</small>`}</div></div>`;
+  }
+  const ev = `evidence/${v}/evidence.html`, rep = `reports/${v}/report.html`;
+  if (has(ev) || has(rep)) h += `<h3>Report and evidence</h3><div class="case"><div class="desc" style="margin:0">The verification report of the last run on this build: every test with its expected and actual values, every scenario with what it must and must never report, and the limits. Printable as a PDF.</div>
+      <div class="row">${has(rep) ? `<button class="go" data-open="${rep}">Verification report</button>` : ""}${has(ev) ? `<button class="go alt" data-open="${ev}">Evidence record</button>` : ""}</div></div>`;
+  $("side").innerHTML = h;
+}
+$("side").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.v) { variant = b.dataset.v; current = null; renderSide(); dashboard(); return; }
+  if (b.dataset.dash !== undefined) { current = null; renderSide(); dashboard(); return; }
+  if (b.dataset.open) return show(b.dataset.open);
+  if (b.dataset.job) start(b.dataset.job, b.dataset.case || null, null);
+});
+const span = list => !list || !list.length ? "?" : list.length === 1 ? String(list[0]) : `${list[0]}–${list[list.length - 1]}`;
+function dashboard() {
+  const v = slug(variant), S = (P.summary || {})[v] || {}, cases = P.cases.length;
+  const tile = (title, big, cls, text, open) =>
+    `<div class="tile${open ? "" : " off"}" ${open ? `data-open="${open}"` : ""}><small>${title}</small><b class="${cls}">${big}</b><span>${text}</span></div>`;
+  const sc = S.scenarios, ut = S.unit, fl = S.faults, gl = S.glitch;
+  $("empty").innerHTML = `<div class="dash"><h1>${esc(P.name)} · firmware ${esc(variant)}</h1>
+    <p>${S.commit ? "Last recorded on commit " + esc(S.commit) + " · " : ""}every number opens its evidence.</p><div class="tiles">
+    ${tile("Unit tests on the virtual board", ut ? (ut.status === "pass" ? "Pass" : "Fail") : "–", ut ? (ut.status === "pass" ? "ok" : "bad") : "",
+           ut ? esc(ut.summary) : "not recorded for this build yet", has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : has(`evidence/${v}/evidence.html`) ? `evidence/${v}/evidence.html` : "")}
+    ${tile("Scenarios you wrote", sc ? (sc.status === "pass" ? `${cases}/${cases}` : "Fail") : `${cases}`, sc ? (sc.status === "pass" ? "ok" : "bad") : "",
+           sc ? esc(sc.summary) : "run them from the list on the left", has(`reports/${v}/report.html`) ? `reports/${v}/report.html` : has(`evidence/${v}/evidence.html`) ? `evidence/${v}/evidence.html` : "")}
+    ${tile("Fault scenarios VirtuLab generated", fl ? `${fl.broken} of ${fl.runs}` : "–", fl ? (fl.broken ? "bad" : "ok") : "",
+           fl ? `broke a rule. Your ${fl.scenarios} scenarios, each with ${span(fl.faults)} sensor faults, at the ${span(fl.moments)} moments its inputs change` : "generate them from the list on the left",
+           has(`faults/${v}/faults.html`) ? `faults/${v}/faults.html` : "")}
+    ${tile("Glitch sweep of the safety decision", gl ? `${gl.broken} of ${gl.runs}` : "–", gl ? (gl.broken ? "bad" : "ok") : "",
+           gl ? "single skipped instructions broke the rule" : "run it from the list on the left", has(`sweeps/${v}/sweep.html`) ? `sweeps/${v}/sweep.html` : "")}
+    </div></div>`;
+  $("empty").style.display = "grid"; $("view").removeAttribute("src");
+  $("vbar").innerHTML = `<b>Overview</b> · firmware: ${esc(variant)}`;
+}
+$("empty").addEventListener("click", e => { const t = e.target.closest(".tile[data-open]"); if (t) show(t.dataset.open); });
+function show(rel, title) {
+  current = rel; renderSide();
+  $("progress").classList.remove("on"); $("empty").style.display = "none";
+  $("view").src = "/view/" + rel + (rel.endsWith("board.html") ? "#play" : "");
+  const what = rel.startsWith("reports/") ? "Verification report" : rel.startsWith("evidence/") ? "Evidence record" : rel.startsWith("sweeps/") ? "Glitch sweep" : rel.startsWith("faults/") ? "Fault scenarios, generated from your scenarios"
+    : rel.includes("--glitch-") ? "Scenario, with one instruction skipped" : rel.includes("--fault-") ? "Scenario, with one faulty peripheral" : "Scenario on the board";
+  $("vbar").innerHTML = `<b>${esc(title || what)}</b> · firmware: ${esc(variant)}`;
+}
+let ticking = null, started = 0;
+async function start(kind, c, skip, fault) {
+  try { await api("/api/studio/job", { kind, case: c, variant, skip, fault }); }
+  catch (e) { $("job").className = "job bad"; $("job").textContent = e.message; return; }
+  tab("test");
+  started = Date.now();
+  $("empty").style.display = "none"; $("progress").classList.add("on");
+  $("ptitle").textContent = kind === "trace" && fault ? `Running ${c.replace(/_/g, " ")} with one faulty peripheral` : kind === "trace" ? (skip ? `Replaying ${c.replace(/_/g, " ")} with one instruction skipped` : `Running ${c.replace(/_/g, " ")} on the virtual board`)
+    : kind === "sweep" ? "Glitch sweep: one run per instruction and moment"
+    : kind === "faults" ? "Generating fault scenarios: every sensor fault, at every moment the inputs change" : "Unit tests on the virtual board";
+  $("pout").textContent = "";
+  clearInterval(ticking); ticking = setInterval(poll, 600);
+}
+async function poll() {
+  const s = await api("/api/studio/job");
+  $("ptime").textContent = Math.round((Date.now() - started) / 1000) + " s";
+  $("pout").textContent = s.output || "starting…"; $("pout").scrollTop = $("pout").scrollHeight;
+  $("job").className = "job run"; $("job").textContent = "running · " + $("ptime").textContent;
+  if (s.state !== "done") return;
+  clearInterval(ticking);
+  P = await api("/api/studio/project");
+  if (s.result) { $("job").className = "job ok"; $("job").textContent = "done"; show(s.result); }
+  else if (s.kind === "unit") {
+    $("job").className = "job " + (s.exit_code === 0 ? "ok" : "bad"); $("job").textContent = s.exit_code === 0 ? "unit tests passed" : "unit tests failed";
+    $("ptitle").textContent = s.exit_code === 0 ? "Unit tests passed" : "Unit tests failed";
+    document.querySelector(".progress .spin").style.display = "none"; renderSide();
+  } else { $("job").className = "job bad"; $("job").textContent = "failed: see the output"; document.querySelector(".progress .spin").style.display = "none"; }
+}
+
+/* ---------- messages from the pages inside ---------- */
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.type === "open" && e.data.file) openFile(e.data.file, e.data.line);
+  if (e.data.type === "fault") {
+    const fault = `${e.data.fault}@${e.data.at}ms`;
+    const key = `runs/${slug(e.data.case)}--${slug(variant)}--fault-${slug(fault)}/board.html`;
+    if (has(key)) show(key); else start("trace", e.data.case, null, fault);
+  }
+  if (e.data.type === "replay") {
+    const skip = `0x${e.data.address.toString(16)}@${e.data.at}ms`;
+    const key = `runs/${slug(e.data.case)}--${slug(variant)}--glitch-${slug(skip)}/board.html`;
+    if (has(key)) show(key); else start("trace", e.data.case, skip);
+  }
+});
+
+(async () => {
+  try {
+    P = await api("/api/studio/project");
+    $("proj").innerHTML = `<b>${esc(P.name)}</b> · ${esc(P.board)} · ${Object.entries(P.modules).map(([n, m]) => esc(m.model)).join(" + ")}`;
+    renderSide(); dashboard(); await loadTree();
+    const h = new URLSearchParams(location.hash.slice(1));
+    if (h.get("variant") && P.variants[h.get("variant")] !== undefined) { variant = h.get("variant"); renderSide(); dashboard(); }
+    if (h.get("view")) { tab("test"); show(h.get("view")); }
+    else if (h.get("file")) await openFile(h.get("file"), Number(h.get("line")) || null);
+    else if (h.get("tab")) tab(h.get("tab"));
+  } catch (e) { document.body.innerHTML = `<p style="padding:20px;color:var(--bad)">Cannot reach VirtuLab: ${esc(e.message)}. Open the URL printed by virtulab studio, with its #token part.</p>`; }
+})();
+</script>
+</body>
+</html>

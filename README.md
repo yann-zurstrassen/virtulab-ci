@@ -143,6 +143,29 @@ rules:
 
 For anything rules cannot express, write a normal Renode model and list it under `models:` and `repl:`. See [`examples/oven-controller`](examples/oven-controller) and [`examples/motor-limit-switch`](examples/motor-limit-switch).
 
+### Fault scenarios, generated from yours
+
+You write a few scenarios. `virtulab faults` generates the rest: it breaks one peripheral at a time (**stuck**, **saturated**, **noisy**, **silent**, **garbled**), at every moment the scenario's inputs change, for 600 ms, and judges each case with the scenario's own `forbid`. The same vocabulary covers catalog sensors, sensors you describe as a register list, and the chip's ADC, so nothing is written case by case:
+
+```sh
+virtulab faults -C examples/wearable-patch
+# ❌ patient_falls: 24 fault cases, 5 broke a rule
+#      imu.AccelerationZ stuck at 1300 ms for 600 ms → FALL=NO FEVER=NO SENSOR=OK
+```
+
+`virtulab trace --case patient_falls --fault imu.AccelerationZ.stuck@1300ms` replays one of them on the board view. Two limits: an I²C sensor is not made silent yet, because the emulator cannot refuse an address, and a case that holds is evidence for this build, not proof.
+
+## 🖥️ VirtuLab Studio: code, board and tests in one window
+
+```sh
+virtulab studio -C examples/wearable-patch --variant plain=-DPATCH_HARDENED=0 --prepare   # record everything once
+virtulab studio -C examples/wearable-patch --variant plain=-DPATCH_HARDENED=0 --app       # open it
+```
+
+- **Board:** the drawn board and its sensors, with each sensor's datasheet map.
+- **Code:** the project's files, coloured by who wrote them: your firmware, VirtuLab's starter drivers, and VirtuLab's runtime and sensor models.
+- **Test:** an overview of the build, every scenario replayed on the board, the generated fault scenarios, the glitch sweep with a one-click replay of each finding, and the evidence record.
+
 ## 🔬 See inside the virtual board
 
 `virtulab trace` records every register access of a run on the virtual clock and writes one page, `.virtulab/trace/index.html`:

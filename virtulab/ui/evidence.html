@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VirtuLab evidence record</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#141821; --line:#262c3a; --text:#e3e7ef; --muted:#8b94a7; --accent:#5aa9ff;
+          --ok:#4fd18b; --bad:#ff5d5d; --warn:#ffc94d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--text);
+         background:radial-gradient(1200px 700px at 30% 0%, #131826 0%, var(--bg) 60%) fixed; }
+  .wrap { max-width:1100px; margin:0 auto; padding:22px 24px 40px; }
+  h1 { font-size:22px; margin:0 0 4px; } h1 span { color:var(--accent); }
+  .lead { color:var(--muted); margin:0 0 18px; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:22px 0 8px; font-weight:600; }
+  .facts { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
+  .fact { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .fact small { display:block; color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; }
+  .fact b { font-size:15px; word-break:break-all; }
+  .fact.ok b { color:var(--ok); } .fact.bad b { color:var(--bad); } .fact.warn b { color:var(--warn); }
+  code { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { text-align:left; color:var(--muted); font-weight:600; font-size:12px; padding:8px 12px; border-bottom:1px solid var(--line); }
+  td { padding:9px 12px; border-bottom:1px solid #1d2230; vertical-align:top; font-size:13px; }
+  td.r { font-weight:700; white-space:nowrap; } td.r.pass { color:var(--ok); } td.r.fail { color:var(--bad); }
+  td.lim { color:#c9b37a; }
+  .note { color:var(--muted); font-size:12.5px; margin-top:16px; }
+  .repro { display:flex; gap:10px; align-items:center; background:#07090d; border:1px solid #262c3a; border-radius:8px;
+           padding:7px 10px; margin:0 0 14px; font-size:12.5px; color:var(--muted); }
+  .repro code { flex:1; color:#d7e0ee; font:12.5px ui-monospace, Menlo, monospace; word-break:break-all; }
+  .repro button, .copy { background:#1a1f2b; color:#e3e7ef; border:1px solid #262c3a; border-radius:6px; font:inherit; font-size:12px; padding:3px 9px; cursor:pointer; }
+  .hitcmd { width:100%; font:11.5px ui-monospace, Menlo, monospace; color:#8b94a7; margin:-2px 0 4px 26px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Evidence <span>record</span></h1>
+  <p class="lead">What ran, on which build, with which tools, and with what result. This is an input to a safety or security case, not a statement of compliance with any standard.</p>
+  <div id="repro"></div>
+  <div class="facts" id="facts"></div>
+  <h2>Checks, each with what it does not show</h2>
+  <table id="checks"></table>
+  <h2>Tools that produced this result</h2>
+  <table id="tools"></table>
+  <p class="note">The same record is written as <code>evidence.json</code> (for tools), <code>EVIDENCE.md</code> (for people), <code>junit.xml</code> (for CI) and <code>results.sarif</code> (for code scanning), in <code>.virtulab/evidence</code> after every run.</p>
+</div>
+<script>
+const E = /*EVIDENCE_DATA*/null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+if (E.command) $("repro").innerHTML = `<div class="repro">Reproduce, in the project folder: <code>${esc(E.command)}</code></div>`;
+const facts = [
+  ["Result", E.overall, E.overall === "pass" ? "ok" : "bad"],
+  ["Commit", (E.commit || "not a git checkout").slice(0, 12) + (E.tree_clean === false ? " + uncommitted changes" : ""), E.tree_clean === false ? "warn" : ""],
+  ["Board", E.board, ""],
+  ["Generated", (E.generated || "").replace("T", " ").replace("Z", " UTC") + " · VirtuLab " + esc(E.virtulab), ""],
+];
+if (E.image) facts.push(["Firmware image SHA-256", E.image.sha256, ""], ["Flash / RAM", `${E.image.flash} / ${E.image.ram} bytes`, ""]);
+$("facts").innerHTML = facts.map(([k, v, c]) => `<div class="fact ${c}"><small>${k}</small><b>${esc(v)}</b></div>`).join("");
+$("checks").innerHTML = `<tr><th>Check</th><th>Result</th><th>Details</th><th>What it does not show</th></tr>` +
+  E.checks.map(c => `<tr><td><code>${esc(c.test)}</code></td><td class="r ${c.status}">${c.status === "pass" ? "Pass" : c.status === "fail" ? "Fail" : esc(c.status)}</td>
+    <td>${esc(c.summary)}</td><td class="lim">${esc(c.limits || "")}</td></tr>`).join("");
+$("tools").innerHTML = `<tr><th>Tool</th><th>Version</th></tr>` +
+  Object.entries(E.tools || {}).map(([k, v]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(v)}</td></tr>`).join("");
+</script>
+</body>
+</html>

@@ -47,6 +47,7 @@
 <header>
   <h1>VirtuLab trace</h1>
   <span id="summary" class="muted"></span>
+  <a href="board.html" style="margin-left:auto;color:var(--accent);text-decoration:none">Board view</a>
 </header>
 <main>
   <section id="board"></section>
@@ -131,7 +132,7 @@ function rows() {
       return;
     }
     h += `<tr class="ev ${i === selected ? "sel" : ""}" data-i="${i}"><td>${e.t}</td><td>${esc(e.peripheral)}</td>
-      <td>${esc(e.register || hex(e.offset, 2))}${e.unmodelled ? '<span class="badge" title="The emulator does not model some bits written here">⚠ not modelled</span>' : ""}</td><td class="${e.op}">${e.op === "read" ? "R" : "W"}</td>
+      <td>${esc(e.register || hex(e.offset, 2))}${e.unmodelled ? '<span class="badge" title="The emulator does not model some bits written here">not modelled</span>' : ""}</td><td class="${e.op}">${e.op === "read" ? "R" : "W"}</td>
       <td>${hex(e.value)}</td><td>${esc(e.function || "")}${e.line ? ` <span class="note">${esc(e.file)}:${e.line}</span>` : ""}</td></tr>`;
   });
   if (shown > 5000) h += `<tr><td colspan="6" class="note">${shown - 5000} more: narrow the filter</td></tr>`;
@@ -188,7 +189,7 @@ function show(i) {
   let h = `<h2>${e.t} ms · ${e.op === "read" ? "read" : "write"}</h2>
     <div style="font-size:15px"><b>${esc(e.peripheral)}.${esc(e.register || hex(e.offset, 2))}</b> = <code>${hex(e.value)}</code></div>`;
   if (reg) h += `<p class="note">${esc(reg.description)}</p>`;
-  if (e.unmodelled) h += `<p class="warn">⚠ The emulator does not model bits [${esc(e.unmodelled.bits)}] of this write${e.unmodelled.tags ? " (" + esc(e.unmodelled.tags) + ")" : ""}. On real silicon they have an effect; here they are ignored.</p>`;
+  if (e.unmodelled) h += `<p class="warn">The emulator does not model bits [${esc(e.unmodelled.bits)}] of this write${e.unmodelled.tags ? " (" + esc(e.unmodelled.tags) + ")" : ""}. On real silicon they have an effect; here they are ignored.</p>`;
   if (e.note) h += `<p class="note">${esc(e.note)}. Offset ${hex(e.offset, 3)} from the block's base.</p>`;
   if (e.fields && e.fields.length) {
     h += `<h2>Bit fields</h2><table class="fields">`;

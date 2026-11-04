@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Verification report</title>
+<style>
+  :root { --ink:#14181f; --muted:#5d6676; --line:#dde2ea; --soft:#f5f7fa; --accent:#1f5fbf; --ok:#137a3d; --bad:#c2271f; --warn:#9a6400; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#e9edf2; color:var(--ink); font:13.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  .page { max-width:1040px; margin:24px auto; background:#fff; padding:44px 52px 56px; box-shadow:0 2px 24px rgba(20,30,50,.12); border-radius:4px; }
+  .brand { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid var(--ink); padding-bottom:16px; }
+  .brand .kicker { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:700; }
+  .brand h1 { margin:4px 0 2px; font-size:26px; letter-spacing:-.01em; }
+  .brand .sub { color:var(--muted); }
+  .brand .logo { font-weight:800; font-size:15px; } .brand .logo span { color:var(--accent); }
+  .verdict { display:inline-block; margin-top:10px; padding:6px 14px; border-radius:4px; font-weight:800; letter-spacing:.06em; font-size:14px; }
+  .verdict.pass { background:#e5f5ec; color:var(--ok); border:1px solid #a8dcbb; }
+  .verdict.fail { background:#fdeceb; color:var(--bad); border:1px solid #f1b3ae; }
+  h2 { font-size:15px; margin:30px 0 10px; padding-bottom:5px; border-bottom:1px solid var(--line); display:flex; gap:10px; align-items:baseline; }
+  h2 .n { color:var(--accent); font-size:13px; }
+  h3 { font-size:13.5px; margin:18px 0 6px; }
+  p.note { color:var(--muted); margin:4px 0 10px; }
+  table { width:100%; border-collapse:collapse; margin:6px 0 4px; }
+  th { text-align:left; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:700;
+       padding:6px 8px; border-bottom:1.5px solid var(--ink); }
+  td { padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.id td:first-child { width:200px; color:var(--muted); }
+  code, .mono { font-family:ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size:12px; }
+  .pass { color:var(--ok); font-weight:700; } .fail { color:var(--bad); font-weight:700; } .skip { color:var(--muted); font-weight:700; }
+  .tag { display:inline-block; padding:0 6px; border-radius:3px; font-size:11px; font-weight:700; }
+  .tag.pass { background:#e5f5ec; } .tag.fail { background:#fdeceb; } .tag.skip { background:var(--soft); }
+  .test { border:1px solid var(--line); border-radius:4px; margin:8px 0; page-break-inside:avoid; }
+  .test .head { display:flex; gap:10px; align-items:baseline; padding:7px 10px; background:var(--soft); border-bottom:1px solid var(--line); }
+  .test .head b { flex:1; }
+  .test table { margin:0; table-layout:fixed; }
+  .test td { overflow-wrap:anywhere; }
+  .test td, .test th { font-size:12px; }
+  .exp { color:#22324a; } .act { color:#22324a; }
+  .val { font-weight:700; }
+  .lim { color:var(--warn); }
+  .out { background:var(--soft); border:1px solid var(--line); border-radius:4px; padding:6px 10px; font-family:ui-monospace, Menlo, monospace; font-size:12px; white-space:pre-wrap; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .foot { margin-top:34px; padding-top:12px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; }
+  .toolbar { max-width:1040px; margin:16px auto 0; display:flex; justify-content:flex-end; gap:8px; }
+  .toolbar button { font:inherit; padding:6px 14px; border-radius:4px; border:1px solid #b9c3d0; background:#fff; cursor:pointer; }
+  @media print {
+    body { background:#fff; } .toolbar { display:none; }
+    .page { box-shadow:none; margin:0; padding:0; max-width:none; }
+    h2 { page-break-after:avoid; }
+    @page { size:A4; margin:16mm 14mm; }
+  }
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">Print or save as PDF</button></div>
+<div class="page" id="page"></div>
+<script>
+const R = /*REPORT_DATA*/null;
+const M = R.manifest || {};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const human = s => String(s).replace(/^test_/, "").replace(/_/g, " ");
+const status = s => s === "pass" || s === "PASS" ? `<span class="tag pass">PASS</span>` : s === "fail" || s === "FAIL"
+  ? `<span class="tag fail">FAIL</span>` : `<span class="tag skip">${esc(String(s).toUpperCase())}</span>`;
+let n = 0;
+const section = title => `<h2><span class="n">${++n}</span>${title}</h2>`;
+const overall = M.overall === "pass";
+const when = (M.generated || "").replace("T", " ").replace("Z", " UTC");
+let h = `<div class="brand"><div>
+    <div class="kicker">Firmware verification report</div>
+    <h1>${esc(R.project)}</h1>
+    <div class="sub">${esc(R.board.description)} · ${esc(R.board.cpu)} · emulated on ${esc(R.board.emulator === "renode" ? "Renode" : "QEMU")}</div>
+    <div class="verdict ${overall ? "pass" : "fail"}">${overall ? "ALL CHECKS PASSED" : "CHECKS FAILED"}</div>
+  </div><div style="text-align:right"><div class="logo">Virtu<span>Lab</span></div><div class="sub">${esc(when)}</div></div></div>`;
+
+// 1. identification
+const img = M.image || {};
+h += section("Identification") + `<table class="id">
+  <tr><td>Project</td><td>${esc(R.project)}</td></tr>
+  <tr><td>Source revision</td><td><code>${esc(M.commit || "not a git checkout")}</code>${M.tree_clean === false ? ` <span class="lim">· with uncommitted changes: this result cannot be reproduced from the revision alone</span>` : ""}</td></tr>
+  <tr><td>Target</td><td>${esc(R.board.name)} · ${esc(R.board.description)}</td></tr>
+  ${Object.keys(R.modules).length ? `<tr><td>Peripherals</td><td>${Object.entries(R.modules).map(([k, m]) => `${esc(k)}: ${esc(m.model)} on ${esc(m.bus)}${m.address != null ? " @ 0x" + Number(m.address).toString(16) : ""}`).join("<br>")}</td></tr>` : ""}
+  ${img.sha256 ? `<tr><td>Firmware image (unit tests)</td><td><code>SHA-256 ${esc(img.sha256)}</code><br>flash ${img.flash} bytes · RAM ${img.ram} bytes</td></tr>` : ""}
+  ${R.command ? `<tr><td>Command</td><td><code>${esc(R.command)}</code></td></tr>` : ""}
+  <tr><td>Produced by</td><td>VirtuLab ${esc(M.virtulab)} · ${esc(when)}</td></tr></table>`;
+
+// 2. summary
+h += section("Summary") + `<table><tr><th>Check</th><th>Result</th><th>Outcome</th></tr>` +
+  R.checks.map(c => `<tr><td>${esc(c.title)}</td><td>${status(c.status)}</td><td>${esc(c.summary)}</td></tr>`).join("") + `</table>`;
+
+// 3. unit tests, with every check
+if (R.unit.length) {
+  const total = R.unit.length, failed = R.unit.filter(t => t.result === "FAIL").length;
+  const checks = R.unit.reduce((a, t) => a + t.checks.length, 0);
+  h += section("Unit tests on the virtual board") +
+    `<p class="note">${total} tests, ${checks} checks, ${failed} failed. Built for the target and run on the emulated board. Each check shows the expression the test compared, the value it expected, and the value the firmware produced.</p>`;
+  const files = {};
+  for (const t of R.unit) (files[t.file] = files[t.file] || []).push(t);
+  for (const [file, tests] of Object.entries(files)) {
+    h += `<h3><code>${esc(file)}</code></h3>`;
+    for (const t of tests) {
+      h += `<div class="test"><div class="head"><b>${esc(human(t.name))}</b><code>${esc(file)}:${t.line}</code>${status(t.result)}</div>`;
+      if (t.checks.length) {
+        h += `<table><colgroup><col style="width:52px"><col style="width:46%"><col><col style="width:78px"></colgroup><tr><th>Line</th><th>Expected</th><th>Actual</th><th>Result</th></tr>` +
+          t.checks.map(c => {
+            const exp = c.kind === "condition" ? `<code>${esc(c.actual_expr)}</code> is <span class="val">${esc(c.expected)}</span>`
+              : `<code class="exp">${esc(c.expected_expr)}</code> = <span class="val">${esc(c.expected)}</span>${c.kind === "within" ? " (tolerance)" : ""}`;
+            const act = c.kind === "condition" ? `<span class="val">${esc(c.actual)}</span>`
+              : `<code class="act">${esc(c.actual_expr)}</code> = <span class="val">${esc(c.actual)}</span>`;
+            return `<tr><td class="mono">${c.line}</td><td>${exp}</td><td>${act}</td><td>${c.held ? `<span class="pass">Held</span>` : `<span class="fail">Failed</span>`}</td></tr>`;
+          }).join("") + `</table>`;
+      } else {
+        h += `<table><tr><td class="note">${t.result === "FAIL" ? esc(t.message) : "No checks recorded (the test ran without assertions, or was built with an older runtime)."}</td></tr></table>`;
+      }
+      h += `</div>`;
+    }
+  }
+}
+
+// 4. scenarios: expected against actual
+const sc = R.checks.find(c => c.test === "scenarios");
+if (sc && sc.data && sc.data.case_results) {
+  h += section("Scenarios: expected and actual behaviour") +
+    `<p class="note">Each scenario scripts the inputs the sensors see over time, states what the firmware must report and must never report, and is judged against what the firmware actually printed.</p>`;
+  for (const c of sc.data.case_results) {
+    const out = c.output || [];
+    const has = x => out.some(l => l.includes(x));
+    const line = x => { const l = out.find(l => l.includes(x)); return l ? `printed <code>${esc(l)}</code>` : "not printed"; };
+    h += `<div class="test"><div class="head"><b>${esc(human(c.name))}</b>${status(c.verdict === "held" ? "pass" : "fail")}</div><div style="padding:8px 10px">
+      ${c.description ? `<p class="note" style="margin-top:0">${esc(c.description)}</p>` : ""}
+      <div class="grid2"><div><table><tr><th>Time</th><th>Input</th><th>Value</th></tr>${(c.inputs || []).map(i =>
+        `<tr><td class="mono">${i.t} ms</td><td class="mono">${esc(i.target)}</td><td class="mono">${i.value}</td></tr>`).join("")}</table></div>
+      <div><table><tr><th>Requirement</th><th>Actual</th><th>Result</th></tr>
+        ${c.expect.map(x => `<tr><td>must report <code>${esc(x)}</code></td><td>${line(x)}</td><td>${has(x) ? `<span class="pass">Met</span>` : `<span class="fail">Not met</span>`}</td></tr>`).join("")}
+        ${c.forbid.map(x => `<tr><td>must never report <code>${esc(x)}</code></td><td>${line(x)}</td><td>${has(x) ? `<span class="fail">Violated</span>` : `<span class="pass">Respected</span>`}</td></tr>`).join("")}
+      </table><div class="out">${out.map(esc).join("\n") || "(no output)"}</div></div></div></div></div>`;
+  }
+  const d = sc.data;
+  if (d.swept) h += `<h3>Glitch sweep of the safety decision</h3><p class="note">${d.swept} single-instruction skips reached their target; ${d.bypass} broke a rule; ${d.crashed} crashed or hung, counted apart.</p>` +
+    (d.findings && d.findings.length ? `<table><tr><th>When</th><th>Instruction</th><th>Source</th></tr>${d.findings.map(f =>
+      `<tr><td class="mono">${esc(f.probe)}</td><td class="mono">${esc(f.function)} · ${esc(f.instruction)}</td><td class="mono">${esc(f.file || "")}${f.line ? ":" + f.line : ""}</td></tr>`).join("")}</table>` : "");
+}
+
+// 5. every check's limits
+h += section("Scope and limits") + `<table><tr><th>Check</th><th>What it does not show</th></tr>` +
+  R.checks.filter(c => c.limits).map(c => `<tr><td>${esc(c.title)}</td><td class="lim">${esc(c.limits)}</td></tr>`).join("") +
+  `<tr><td>Emulation</td><td class="lim">Firmware logic and peripheral protocols run on an emulated board with sensor models written from their datasheets. Analog behaviour, exact timing, power and EMC are not emulated: hardware-in-the-loop remains the final gate.</td></tr></table>`;
+
+// 6. tools
+h += section("Tools") + `<table><tr><th>Tool</th><th>Version</th></tr>` +
+  Object.entries(M.tools || {}).map(([k, v]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(v)}</td></tr>`).join("") + `</table>`;
+
+h += `<div class="foot">This report is an input to a safety or security case, not a statement of compliance with any standard. The same results are recorded in machine-readable form in <code>.virtulab/evidence</code>: <code>evidence.json</code>, <code>junit.xml</code> and <code>results.sarif</code>.</div>`;
+document.getElementById("page").innerHTML = h;
+document.title = `Verification report · ${R.project}`;
+</script>
+</body>
+</html>

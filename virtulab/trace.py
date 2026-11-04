@@ -24,6 +24,7 @@ from .config import ProjectConfig, generated_models, renode_repl
 _ACCESS = re.compile(r"\] (\S+): \[cpu: 0x([0-9A-Fa-f]+)\] (Read|Write)(\w+) (?:from|to) 0x([0-9A-Fa-f]+) "
                      r"\(([^)]*)\), (?:value|returned) 0x([0-9A-Fa-f]+)")
 _TICK = re.compile(r"VL_MS (\d+)")
+_GLITCH = re.compile(r"VL_GLITCH skipped 0x([0-9A-Fa-f]+)")
 # Renode's I2C controllers report each transfer at debug level.
 _I2C_START = re.compile(r"\] (i2c\d+): (?:Starting|Restarting) transmission")
 _I2C_STOP = re.compile(r"\] (i2c\d+): Stopping transmission")
@@ -117,6 +118,10 @@ def parse_log(text: str) -> list[dict]:
         if tick:
             now = int(tick[1])
             continue
+        glitch = _GLITCH.search(line)
+        if glitch:
+            events.append({"kind": "glitch", "t": now, "address": int(glitch[1], 16)})
+            continue
         m = _I2C_DATA.search(line)
         if m:
             bus, address = m[1], int(m[3], 16)
@@ -191,8 +196,40 @@ def _model_line(source: str, offset: int, op: str) -> int | None:
 # ---------------------------------------------------------------------------
 # running and writing
 
+def _short(text: str, root: Path) -> str:
+    """Absolute paths made readable: the project as <project>, VirtuLab's own files as <virtulab>."""
+    package = Path(__file__).resolve().parent
+    return text.replace(str(root) + "/", "<project>/").replace(str(root), "<project>").replace(
+        str(package) + "/", "<virtulab>/")
+
+
+def _under_the_hood(root: Path, result, run_dir: Path) -> dict:
+    """Everything VirtuLab generated and ran for this recording, to show instead of asking for trust."""
+    import hashlib
+    import shlex
+    files = {}
+    for name in ("run.resc", "peripherals.repl"):
+        if (run_dir / name).is_file():
+            files[name] = _short((run_dir / name).read_text(), root)
+    for model in sorted((run_dir / "models").glob("*.cs")):
+        files[f"models/{model.name}"] = _short(model.read_text(), root)
+    commands = [_short(shlex.join([Path(c[0]).name, *c[1:]]), root) for c in result.commands]
+    uart = run_dir / "uart.log"
+    return {
+        "commands": commands,
+        "elf_sha256": hashlib.sha256(result.elf.read_bytes()).hexdigest() if result.elf else None,
+        "sizes": {"flash": result.sizes.flash, "ram": result.sizes.ram} if result.sizes else None,
+        "files": files,
+        "uart": uart.read_text(errors="replace")[-6000:] if uart.is_file() else "",
+    }
+
+
 def record(cfg: ProjectConfig, root: Path, work: Path, sources: list[str] | None = None,
-           include: list[str] | None = None) -> dict:
+           include: list[str] | None = None, skip: tuple[int, float] | None = None,
+           target: str | None = None) -> dict:
+    """Record one run. With `skip` (address, after_ms), the instruction at that address is skipped
+    on its first execution after that virtual time, as one run of a glitch sweep does."""
+    from .emulator import FaultSkip
     from .emulator import run as emulate
 
     board = BOARDS[cfg.board]
@@ -217,7 +254,21 @@ def record(cfg: ProjectConfig, root: Path, work: Path, sources: list[str] | None
     buses = sorted({m.bus for m in cfg.modules.values()} | {p.bus for p in cfg.peripherals.values()})
     repl += "".join(f"logLevel 0 {bus}\n" for bus in buses if bus.startswith("i2c"))
     repl += "".join(f"logLevel -1 sysbus.{bus}.{bus}_mux\n" for bus in buses if bus.startswith("spi"))
-    ran = emulate(board, result.elf, float(re.sub(r"[^\d.]", "", cfg.timeout) or 30), run_dir, repl)
+    fault, glitch = None, None
+    if skip:
+        from .suite import _instructions
+        address, after_ms = skip
+        listing = {a: (w, where, text) for a, w, where, text in _instructions(result.elf, target or "", [])}
+        if address not in listing:
+            raise VirtulabError(f"no instruction at {address:#x} in {target}")
+        width, where, text = listing[address]
+        fault = FaultSkip(address, address + width, run_dir / "applied", after_ms)
+        place = _locate(result.elf, [address], root).get(address, {})
+        glitch = {"address": address, "where": where, "instruction": text, "after_ms": after_ms,
+                  "file": place.get("file"), "line": place.get("line")}
+        if place.get("file") and (root / place["file"]).is_file():
+            glitch["code"] = (root / place["file"]).read_text().splitlines()[place["line"] - 1].strip()
+    ran = emulate(board, result.elf, float(re.sub(r"[^\d.]", "", cfg.timeout) or 30), run_dir, repl, fault)
     events = parse_log((run_dir / "renode.log").read_text(errors="replace"))
     if not any(e["kind"] == "access" for e in events):
         raise VirtulabError("the run recorded no register accesses")
@@ -266,7 +317,8 @@ def record(cfg: ProjectConfig, root: Path, work: Path, sources: list[str] | None
     return {
         "catalog": catalog,
         "board": {"name": board.name, "cpu": board.cpu, "description": board.description},
-        "modules": [{"name": m.name, "model": m.model, "bus": m.bus} for m in cfg.modules.values()]
+        "modules": [{"name": m.name, "model": m.model, "bus": m.bus,
+                     **({"address": m.address} if m.address is not None else {})} for m in cfg.modules.values()]
                    + [{"name": p.name, "model": "project-defined", "bus": p.bus} for p in cfg.peripherals.values()]
                    + [{"name": a.name, "model": "ADC", "bus": "on chip",
                        "inputs": a.inputs} for a in cfg.analog.values()],
@@ -275,6 +327,9 @@ def record(cfg: ProjectConfig, root: Path, work: Path, sources: list[str] | None
         "duration_ms": max(e["t"] for e in events),
         "counts": dict(Counter(e["peripheral"] for e in events if e["kind"] == "access")),
         "events": events, "registers": registers, "files": files,
+        "under_the_hood": _under_the_hood(root, result, run_dir),
+        **({"glitch": {**glitch, "applied": bool(fault and fault.marker.exists()),
+                       "t": next((e["t"] for e in events if e["kind"] == "glitch"), None)}} if glitch else {}),
     }
 
 
@@ -512,4 +567,7 @@ def write(trace: dict, out: Path) -> Path:
     page = (Path(__file__).with_name("ui") / "trace.html").read_text()
     data = json.dumps(trace).replace("</", "<\\/")
     (out / "index.html").write_text(page.replace("/*TRACE_DATA*/null", data, 1))
+    ui = Path(__file__).with_name("ui")
+    board = (ui / "board.html").read_text().replace("/*BOARD_ART*/", (ui / "boardart.js").read_text(), 1)
+    (out / "board.html").write_text(board.replace("/*TRACE_DATA*/null", data, 1))
     return out / "index.html"

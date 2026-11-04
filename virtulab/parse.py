@@ -20,6 +20,7 @@ class TestCase:
     name: str
     result: str  # "PASS" | "FAIL" | "IGNORE"
     message: str = ""
+    checks: list[dict] = field(default_factory=list)  # every assertion: what was compared, expected, actual
 
 
 @dataclass
@@ -87,18 +88,37 @@ def parse_diagnostics(log: str) -> list[Diagnostic]:
     return diagnostics
 
 
+def _check(line: str) -> dict | None:
+    """One VL_CHECK record of the on-target runtime, see runtime/virtulab_test.h."""
+    parts = line.rstrip("\r").split("\t")
+    if len(parts) != 8 or parts[0] != "VL_CHECK" or not parts[1].isdigit():
+        return None
+    _, at, kind, expected_expr, expected, actual_expr, actual, held = parts
+    return {"line": int(at), "kind": kind, "expected_expr": expected_expr, "expected": expected,
+            "actual_expr": actual_expr, "actual": actual, "held": held == "1"}
+
+
 def parse_tests(output: str) -> TestSummary:
     summary = TestSummary()
-    for m in _TEST_LINE.finditer(output):
-        summary.cases.append(
-            TestCase(
-                file=m["file"],
-                line=int(m["line"]),
-                name=m["name"],
-                result=m["result"],
-                message=(m["message"] or "").strip(),
+    pending: list[dict] = []
+    for raw in output.splitlines():
+        check = _check(raw)
+        if check:
+            pending.append(check)
+            continue
+        m = _TEST_LINE.match(raw)
+        if m:
+            summary.cases.append(
+                TestCase(
+                    file=m["file"],
+                    line=int(m["line"]),
+                    name=m["name"],
+                    result=m["result"],
+                    message=(m["message"] or "").strip(),
+                    checks=pending,
+                )
             )
-        )
+            pending = []
     totals = list(_TEST_SUMMARY.finditer(output))
     if totals:
         # A runner may call UNITY_BEGIN/END more than once; add the groups up.
@@ -119,3 +139,8 @@ def parse_fault(output: str) -> Fault | None:
     return Fault(
         kind=m["kind"], pc=int(m["pc"], 16), lr=int(m["lr"], 16), registers=m["rest"].strip()
     )
+
+
+def without_checks(output: str) -> str:
+    """The firmware output as a person reads it: the VL_CHECK records are for the report."""
+    return "\n".join(line for line in output.splitlines() if not line.startswith("VL_CHECK\t"))

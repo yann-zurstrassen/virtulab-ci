@@ -132,6 +132,9 @@ class RecordingTest(unittest.TestCase):
         self.assertIn("models/Analog_adc1.cs", data["files"])
         page = trace.write(data, root / ".virtulab" / "trace")
         self.assertIn("oven_read_counts", page.read_text())
+        board = page.with_name("board.html").read_text()
+        self.assertNotIn("/*TRACE_DATA*/null", board)
+        self.assertIn('"duration_ms"', board)
 
     def test_a_custom_sensor_conversation_is_decoded(self):
         tmp = Path(tempfile.mkdtemp()).resolve()
@@ -161,3 +164,36 @@ class StartupTest(unittest.TestCase):
                                              "air: VirtuLab.SHT31 @ i2c1 0x44\n", tmp / "u", tmp / "s")
         includes = [l for l in script.read_text().splitlines() if l.startswith("include")]
         self.assertEqual([Path(l.split("@", 1)[1]).name for l in includes], ["SHT31.cs"])
+
+
+@unittest.skipUnless(HAVE_TOOLS and HAVE_RENODE, "needs arm-none-eabi-gcc and Renode")
+class FaultReplayTest(unittest.TestCase):
+    def test_a_replayed_fault_is_on_the_page_and_breaks_the_fall(self):
+        import contextlib
+        import io
+        import json
+
+        from virtulab.cli import main
+        tmp = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, tmp)
+        root = tmp / "patch"
+        shutil.copytree(REPO / "examples/wearable-patch", root, ignore=shutil.ignore_patterns(".virtulab"))
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = main(["trace", "-C", str(root), "--case", "patient_falls",
+                         "--fault", "imu.AccelerationZ.stuck@1300ms"])
+        self.assertEqual(code, 0)
+        data = json.loads((root / ".virtulab/trace/trace.json").read_text())
+        self.assertEqual(data["fault"]["kind"], "stuck")
+        self.assertEqual(data["fault"]["until"], 1900)
+        self.assertEqual(data["scenario"]["verdict"], "broken")       # the impact is never seen
+        self.assertIn('"fault": {', (root / ".virtulab/trace/board.html").read_text())
+        # the page lists what the scenario scripts, not the injected steps
+        self.assertEqual(len(data["scenario"]["inputs"]), 5)
+        # and shows how to reproduce it, and everything generated for it
+        self.assertEqual(data["command"], "virtulab trace --case patient_falls --fault imu.AccelerationZ.stuck@1300ms")
+        hood = data["under_the_hood"]
+        self.assertIn("run.resc", hood["files"])
+        self.assertIn('1300.0d, "sysbus.i2c1.imu", "AccelerationZ", 0.1m', hood["files"]["models/Stimulus.cs"])
+        self.assertTrue(any("firmware.elf" in c for c in hood["commands"]))
+        self.assertNotIn(str(root), json.dumps(hood))                   # paths are shown as <project>
+        self.assertIn("FALL=NO", hood["uart"])

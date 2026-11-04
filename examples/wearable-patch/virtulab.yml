@@ -1,0 +1,42 @@
+# A wearable patch: an MPU-6050 accelerometer detects a fall, an SHT31 on the skin detects a fever.
+# Both sensors are emulated from their datasheets on I2C1 of an STM32F4. Each scenario scripts what
+# the patient does, and says what the patch must report and must never report.
+version: 1
+board: stm32f4_discovery
+build:
+  sources: [src/*.c, test/*.c]
+  include: [include, test]
+  cflags: "-std=c99 -Wall -Wextra"
+timeout: 30s
+modules:
+  imu: { model: mpu6050, bus: i2c1, address: 0x68 }
+  skin: { model: sht31, bus: i2c1, address: 0x44 }
+tests:
+  unit: {}
+  scenarios:
+    sources: [scenario/main.c, src/monitor.c, src/patch.c, src/mpu6050.c, src/sht31.c, src/i2c.c, src/crc.c, src/clock.c]
+    include: [include]
+    target: src/patch.c
+    functions: [patch_step]
+    cases:
+      daily_life:
+        description: The patient walks, then sits down hard. A jolt with no free fall before it is not a fall.
+        stimulus_file: inputs/daily_life.csv
+        expect: [FALL=NO, FEVER=NO, SENSOR=OK]
+        forbid: FALL=YES
+      patient_falls:
+        description: The patient falls. 300 ms of free fall, a 3.5 g impact, then lying still. The alarm must go off, even if a glitch strikes as the patient lands.
+        stimulus_file: inputs/patient_falls.csv
+        expect: FALL=YES
+        forbid: FALL=NO
+        faults: [1300ms, 1560ms]        # a glitch as the impact lands, and as the fall is confirmed
+      fever:
+        description: The skin temperature rises from 36.8 to 38.6 degrees C. Three readings in a row above 38 raise the fever alarm.
+        stimulus_file: inputs/fever.csv
+        expect: [FEVER=YES, FALL=NO]
+        forbid: FEVER=NO
+      damaged_sensor_cable:
+        description: The cable to the skin sensor gets damaged, so from 400 ms its answers arrive garbled. They read 39.5 degrees, which looks like a fever, but their checksum is wrong. The patch must not trust them. No fever alarm, and a warning that the sensor is faulty, so a nurse checks it.
+        stimulus_file: inputs/damaged_sensor_cable.csv
+        expect: [SENSOR=FAULT, FEVER=NO]
+        forbid: FEVER=YES

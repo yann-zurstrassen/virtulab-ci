@@ -6,7 +6,7 @@ from .baseline import Baseline, diff_symbols
 from .boards import Board
 from .build import BuildResult
 from .emulator import RunResult
-from .parse import Fault, TestSummary
+from .parse import Fault, TestSummary, without_checks
 
 PASSED = "passed"
 FAILED = "failed"
@@ -250,7 +250,7 @@ def render_markdown(outcome: Outcome, report_id: str = "default", checks_md: str
             "<details>",
             "<summary>🔍 Emulator output</summary>",
             "",
-            _fence(_truncate(outcome.run.output.strip() or "(no output)")),
+            _fence(_truncate(without_checks(outcome.run.output).strip() or "(no output)")),
             "</details>",
         ]
     return "\n".join(lines) + "\n"

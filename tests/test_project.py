@@ -319,7 +319,9 @@ class UiServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("stm32f4_discovery", [b["id"] for b in data["boards"]])
         page = urllib.request.urlopen(self.base + "/").read().decode()
-        self.assertIn("VirtuLab setup", page)
+        self.assertIn("set up your virtual board", page)
+        art = urllib.request.urlopen(self.base + "/boardart.js").read().decode()
+        self.assertIn("VirtuBoard", art)
 
     def test_check_preview_and_save_round_trip(self):
         cfg = {"board": "stm32f4_discovery", "modules": {"temp": {"model": "tmp108", "bus": "i2c1", "address": 72}},

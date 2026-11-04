@@ -57,7 +57,7 @@ def to_options(cfg: ProjectConfig, root: Path, base: Options) -> Options:
     )
 
 
-def run_project(cfg: ProjectConfig, root: Path, base: Options) -> int:
+def run_project(cfg: ProjectConfig, root: Path, base: Options, command: str = "") -> int:
     root = root.resolve()
     if not cfg.tests:
         raise VirtulabError("No tests selected. Enable some in virtulab.yml or run `virtulab init`.")
@@ -111,6 +111,11 @@ def run_project(cfg: ProjectConfig, root: Path, base: Options) -> int:
     }
     written = evidence.write(cfg, suite, root, work)
     print(f"🧾 Evidence written to {os.path.relpath(written)}")
+    import json
+
+    from . import testreport
+    page = testreport.write(cfg, suite, root, work, json.loads((written / "evidence.json").read_text()), command)
+    print(f"📊 Verification report: {os.path.relpath(page)}")
     if suite.outcome is None:
         code = _finish_without_unit(opts, cfg, suite, work, extra)
     else:
@@ -124,6 +129,27 @@ def run_project(cfg: ProjectConfig, root: Path, base: Options) -> int:
     return code
 
 
+def _docker_args(cfg: ProjectConfig, base: Options) -> list[str]:
+    """The run as configured here, command-line overrides included, for the copy inside the image.
+    The project file is re-read there, so passing values that match it changes nothing."""
+    args = ["--only", ",".join(cfg.tests), "--board", cfg.board, f"--timeout={cfg.timeout}",
+            f"--cflags={cfg.cflags}", *(f"-I{d}" for d in cfg.include)]
+    if cfg.sources:
+        args += ["--sources", *cfg.sources]
+    seconds = (cfg.tests.get("fuzz") or {}).get("seconds")
+    if seconds:
+        args.append(f"--fuzz-seconds={seconds}")
+    if base.baseline_ref:
+        args += ["--baseline", base.baseline_ref]
+    for flag, value in (("--max-flash-increase", base.max_flash_increase),
+                        ("--max-ram-increase", base.max_ram_increase)):
+        if value is not None:
+            args.append(f"{flag}={value}")
+    if base.work_dir != ".virtulab":
+        args.append(f"--work-dir={base.work_dir}")
+    return args
+
+
 def _run_in_docker(cfg: ProjectConfig, root: Path, base: Options) -> int | None:
     """Re-run inside the VirtuLab image when this machine lacks the toolchain or emulator."""
     docker = shutil.which("docker")
@@ -131,9 +157,7 @@ def _run_in_docker(cfg: ProjectConfig, root: Path, base: Options) -> int | None:
         return None
     image = os.environ.get("VIRTULAB_IMAGE", IMAGE)
     cmd = [docker, "run", "--rm", "-v", f"{root}:/workspace", "-w", "/workspace", image,
-           "run", "--only", ",".join(cfg.tests)]
-    if base.baseline_ref:
-        cmd += ["--baseline", base.baseline_ref]
+           "run", *_docker_args(cfg, base)]
     print(f"🐳 Some tools are not installed here, so the tests run in {image}\n")
     sys.stdout.flush()
     return subprocess.run(cmd).returncode

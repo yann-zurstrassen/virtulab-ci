@@ -70,7 +70,7 @@ def _config_from_payload(payload: dict) -> config.ProjectConfig:
     return config.from_dict(payload.get("config") or {})
 
 
-def make_handler(root: Path, token: str):
+def make_handler(root: Path, token: str, studio=None):
     runs = Runs(root)
 
     class Handler(BaseHTTPRequestHandler):
@@ -104,7 +104,18 @@ def make_handler(root: Path, token: str):
             path, _, query = self.path.partition("?")
             params = parse_qs(query)
             if path == "/":
+                page = PAGE.with_name("studio.html") if studio else PAGE
+                return self._send(200, page.read_bytes(), "text/html; charset=utf-8")
+            if path == "/setup":
                 return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+            if studio and path.startswith("/view/"):
+                try:
+                    body, ctype = studio.view(path[len("/view/"):])
+                except VirtulabError:
+                    return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                return self._send(200, body, ctype)
+            if path == "/boardart.js":
+                return self._send(200, PAGE.with_name("boardart.js").read_bytes(), "text/javascript; charset=utf-8")
             if not self._authorized():
                 return self._json({"error": "missing or wrong token"}, HTTPStatus.FORBIDDEN)
             try:
@@ -116,6 +127,15 @@ def make_handler(root: Path, token: str):
                                        "config": existing.to_dict() if existing else None})
                 if path == "/api/run":
                     return self._json(runs.status())
+                if studio and path == "/api/studio/project":
+                    return self._json(studio.project())
+                if studio and path == "/api/studio/files":
+                    origins = studio.origins()
+                    return self._json({"files": list(origins), "origins": origins})
+                if studio and path == "/api/studio/file":
+                    return self._json(studio.file(params["path"][0]))
+                if studio and path == "/api/studio/job":
+                    return self._json(studio.status())
                 if path == "/api/datasheet":
                     return self._json(datasheets.load(params["module"][0]))
                 if path == "/api/source":
@@ -139,6 +159,13 @@ def make_handler(root: Path, token: str):
             try:
                 payload = json.loads(self.rfile.read(length) or b"{}")
                 path = self.path
+                if studio and path in ("/api/save", "/api/run"):
+                    raise VirtulabError("The studio shows this project's setup without rewriting virtulab.yml. "
+                                        "Use `virtulab ui` to change it.")
+                if studio and path == "/api/studio/job":
+                    return self._json(studio.start(str(payload.get("kind")), payload.get("case"),
+                                                   str(payload.get("variant") or "as written"), payload.get("skip"),
+                                                   payload.get("fault")))
                 if path == "/api/check":
                     cfg = _config_from_payload(payload)
                     if payload.get("sample"):
@@ -184,17 +211,47 @@ def make_handler(root: Path, token: str):
     return Handler
 
 
-def serve(root: Path, port: int = 8765, open_browser: bool = True) -> int:
+# Browsers that can open a page as its own app window, with no tabs or address bar.
+APP_BROWSERS = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    "google-chrome", "chromium", "chromium-browser", "microsoft-edge",
+]
+
+
+def app_window_command(url: str, candidates: list[str] | None = None) -> list[str] | None:
+    """The command that opens `url` as a standalone app window, or None when no such browser is here."""
+    import shutil as _shutil
+    for candidate in candidates or APP_BROWSERS:
+        found = candidate if Path(candidate).is_file() else _shutil.which(candidate)
+        if found:
+            return [found, f"--app={url}", "--window-size=1440,900", "--new-window"]
+    return None
+
+
+def _open(url: str, app: bool) -> None:
+    command = app_window_command(url) if app else None
+    if command:
+        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    else:
+        if app:
+            print("   No Chrome, Edge, Chromium or Brave found for an app window: opening a browser tab instead.")
+        webbrowser.open(url)
+
+
+def serve(root: Path, port: int = 8765, open_browser: bool = True, studio=None, app: bool = False) -> int:
     root.mkdir(parents=True, exist_ok=True)
     token = secrets.token_urlsafe(16)
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(root, token))
+        server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(root, token, studio))
     except OSError as exc:
         raise VirtulabError(f"Cannot listen on 127.0.0.1:{port} ({exc}). Try --port.") from None
     url = f"http://127.0.0.1:{server.server_port}/#token={token}"
-    print(f"🧭 VirtuLab setup page for {root}\n   {url}\n   Press Ctrl+C to stop.", flush=True)
+    print(f"🧭 VirtuLab {'studio' if studio else 'setup page'} for {root}\n   {url}\n   Press Ctrl+C to stop.", flush=True)
     if open_browser:
-        threading.Timer(0.3, webbrowser.open, args=(url,)).start()
+        threading.Timer(0.3, _open, args=(url, app)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

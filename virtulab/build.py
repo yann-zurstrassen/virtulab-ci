@@ -64,6 +64,7 @@ class BuildResult:
     sizes: Sizes | None = None
     symbols: dict[str, int] = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
+    commands: list[list[str]] = field(default_factory=list)  # every compiler and linker call, in order
 
 
 def tool(name: str) -> str:
@@ -160,12 +161,13 @@ def build(root: Path, cfg: BuildConfig, build_dir: Path, exclude: Path | None = 
         return BuildResult(False, log, parse_diagnostics(log), sources=sources)
 
     elf = build_dir / "firmware.elf"
-    code, out = _run([
+    link = [
         tool("g++" if uses_cxx else "gcc"), *cfg.board.cflags, *map(str, objects),
         "-nostartfiles", "-T", str(linker_script), "--specs=nano.specs", "--specs=nosys.specs",
         "-Wl,--gc-sections", f"-Wl,-Map={build_dir / 'firmware.map'}",
         "-Wl,--no-warn-rwx-segments", *cfg.ldflags, "-o", str(elf),
-    ], root)
+    ]
+    code, out = _run(link, root)
     log += out
     if code != 0:
         return BuildResult(False, log, parse_diagnostics(log), sources=sources)
@@ -178,6 +180,7 @@ def build(root: Path, cfg: BuildConfig, build_dir: Path, exclude: Path | None = 
         sizes=measure(elf),
         symbols=symbol_sizes(elf),
         sources=sources,
+        commands=[*jobs, link],
     )
 
 

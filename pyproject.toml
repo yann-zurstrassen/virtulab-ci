@@ -22,4 +22,4 @@ version = { attr = "virtulab.__version__" }
 include = ["virtulab*"]
 
 [tool.setuptools.package-data]
-virtulab = ["runtime/**/*", "templates/**/*", "devices/*.cs", "datasheets/*.yml", "ui/*.html"]
+virtulab = ["runtime/**/*", "templates/**/*", "devices/*.cs", "datasheets/*.yml", "ui/*.html", "ui/*.js"]

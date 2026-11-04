@@ -274,6 +274,50 @@ def ui(ns) -> int:
     return serve(Path(ns.directory).resolve(), ns.port, open_browser=not ns.no_browser)
 
 
+def faults(ns) -> int:
+    from dataclasses import replace
+
+    from .scenarios import run_faults
+    root = Path(ns.directory).resolve()
+    cfg = config.load(root)
+    if cfg is None or "scenarios" not in cfg.tests:
+        raise VirtulabError("virtulab faults needs tests.scenarios in virtulab.yml: the faults are injected into them")
+    if ns.cflags is not None:
+        cfg = replace(cfg, cflags=ns.cflags)
+    print(f"⏺  Generating fault cases from {len(cfg.tests['scenarios'].get('cases', {}))} scenarios", flush=True)
+    import shlex
+    command = "virtulab faults" + (" " + shlex.quote(f"--cflags={ns.cflags}") if ns.cflags is not None else "")
+    data = run_faults(cfg, root, root / ".virtulab", command)
+    for case in data["cases"]:
+        broken = [r for r in case["runs"] if r["result"] == "broken"]
+        if case.get("skipped"):
+            print(f"⏭️  {case['name']}: {case['skipped']}")
+        else:
+            print(f"{'❌' if broken else '✅'} {case['name']}: {len(case['runs'])} fault cases, {len(broken)} broke a rule")
+            labels = {f["key"]: f["label"] for f in case["faults"]}
+            for r in broken:
+                print(f"     {labels[r['fault']]} at {r['at']:g} ms for {data['window_ms']:g} ms → {r['said']}")
+    page = root / ".virtulab" / "faults" / "faults.html"
+    print(f"{'❌' if data['broken'] else '✅'} {data['broken']} of {data['runs']} generated fault cases broke a rule"
+          f", {data['crashed']} crashed or hung")
+    print(f"📄 Open {os.path.relpath(page)} in a browser")
+    return 1 if data["broken"] or data["crashed"] else 0
+
+
+def studio(ns) -> int:
+    from .ui import studio as st
+    from .ui.server import serve
+    root = Path(ns.directory).resolve()
+    if config.load(root) is None:
+        raise VirtulabError(f"No virtulab.yml in {root}. Run `virtulab init` first.")
+    variants = st.parse_variants(ns.variant)
+    if ns.prepare:
+        return st.prepare(root, variants)
+    studio = st.Studio(root, variants)
+    studio.refresh()   # pages recorded by an older VirtuLab get today's page designs
+    return serve(root, ns.port, open_browser=not ns.no_browser, studio=studio, app=ns.app)
+
+
 def trace(ns) -> int:
     from dataclasses import replace
 
@@ -286,6 +330,30 @@ def trace(ns) -> int:
     if cfg is None:
         raise VirtulabError(f"No virtulab.yml in {root}. Run `virtulab init` first.")
     sources = include = None
+    if ns.cflags is not None:
+        cfg = replace(cfg, cflags=ns.cflags)
+    skip = target = None
+    if ns.skip:
+        from .peripherals import parse_time_ms
+        address, _, when = ns.skip.partition("@")
+        try:
+            skip = (int(address, 0), parse_time_ms(when or "0ms"))
+        except ValueError:
+            raise VirtulabError(f"--skip '{ns.skip}' must look like 0x080002a8@1300ms") from None
+        if not ns.case:
+            raise VirtulabError("--skip needs --case: a glitch is judged against a scenario")
+        target = option(cfg, "scenarios", "target")
+    fault = None
+    if getattr(ns, "fault", None):
+        from . import faults as fv
+        from .peripherals import parse_time_ms
+        key, _, when = ns.fault.partition("@")
+        try:
+            fault, fault_at = fv.parse(key), parse_time_ms(when or "0ms")
+        except ValueError:
+            raise VirtulabError(f"--fault '{ns.fault}' must look like imu.*.silent@1300ms") from None
+        if not ns.case:
+            raise VirtulabError("--fault needs --case: a fault is injected into a scenario")
     if ns.case:
         if "scenarios" not in cfg.tests:
             raise VirtulabError("--case needs tests.scenarios in virtulab.yml")
@@ -295,13 +363,56 @@ def trace(ns) -> int:
         cfg = with_case(cfg, cases[ns.case])
         sources = list(option(cfg, "scenarios", "sources"))
         include = list(option(cfg, "scenarios", "include"))
-    print(f"⏺  Recording {'scenario ' + ns.case if ns.case else 'the unit tests'} on {cfg.board}", flush=True)
-    data = recorder.record(cfg, root, root / ".virtulab", sources, include)
+    scripted = None
+    if fault:
+        from .config import all_stimulus
+        scripted = all_stimulus(cfg, root)
+        if fault.input is None and not fv.wire(cfg, fault.module, fault.kind):
+            raise VirtulabError(f"{fault.module} has no '{fault.kind}' fault")
+        if fault.input is not None and fault.kind != "stuck" and not fv.input_range(cfg, fault.module, fault.input):
+            raise VirtulabError(f"{fault.module}.{fault.input} has no known range, so it cannot be {fault.kind}")
+        cfg = replace(cfg, stimulus=fv.inject(cfg, scripted, fault, fault_at), stimulus_file=None)
+    print(f"⏺  Recording {'scenario ' + ns.case if ns.case else 'the unit tests'} on {cfg.board}"
+          + (f", skipping the instruction at {skip[0]:#x} after {skip[1]:g} ms" if skip else ""), flush=True)
+    data = recorder.record(cfg, root, root / ".virtulab", sources, include, skip, target)
+    if ns.case:
+        from .config import all_stimulus
+        from .scenarios import _fault_verdict, _verdict
+        case = cases[ns.case]
+        judge = _fault_verdict if fault else _verdict
+        data["scenario"] = {
+            "name": case.name, "description": case.description, "expect": case.expect, "forbid": case.forbid,
+            "faults": case.fault_times, "verdict": judge(case, data["output"], data["exit_code"]),
+            "inputs": [{"t": s.at_ms, "target": f"{s.module}.{s.prop}", "value": s.value}
+                       for s in (scripted or all_stimulus(cfg, root))],
+            "rules": [{"when": r.pin, "high": r.level, "for_ms": r.hold_ms, "set": r.target, "to": r.value}
+                      for r in cfg.rules],
+        }
+    import shlex
+    data["command"] = " ".join(["virtulab trace", *(["--case", ns.case] if ns.case else []),
+                                *([shlex.quote(f"--cflags={ns.cflags}")] if ns.cflags is not None else []),
+                                *(["--skip", ns.skip] if ns.skip else []),
+                                *(["--fault", shlex.quote(ns.fault)] if getattr(ns, "fault", None) else [])])
+    if fault:
+        data["fault"] = {"label": fault.label, "kind": fault.kind, "module": fault.module, "input": fault.input,
+                         "what": fv.FAULTS[fault.kind], "at": fault_at, "until": fault_at + fv.WINDOW_MS}
     page = recorder.write(data, root / ".virtulab" / "trace")
     kinds = [e["kind"] for e in data["events"]]
+    if fault:
+        print(f"⚠️  {fault.label} from {fault_at:g} to {fault_at + fv.WINDOW_MS:g} ms: "
+              + {"held": "the scenario still held.", "broken": "the scenario broke: a forbidden output appeared.",
+                 "no_result": "the firmware gave no result."}[data["scenario"]["verdict"]])
+    if skip:
+        g = data["glitch"]
+        print(f"⚡ {'Skipped' if g['applied'] else 'Never reached:'} {g['instruction']} ({g['where']}"
+              + (f", {g['file']}:{g['line']}" if g.get("file") else "") + ")"
+              + (f" at {g['t']} ms" if g.get("t") is not None else "")
+              + ". " + {"held": "The scenario still held.", "broken": "The scenario broke: a forbidden output appeared.",
+                        "no_result": "The firmware gave no result."}[data["scenario"]["verdict"]])
     print(f"✅ {kinds.count('access')} register accesses and {kinds.count('bus')} bus messages "
           f"over {data['duration_ms']} ms of virtual time")
     print(f"📄 Open {os.path.relpath(page)} in a browser")
+    print(f"🔌 Board view: {os.path.relpath(page.with_name('board.html'))}")
     return 0
 
 

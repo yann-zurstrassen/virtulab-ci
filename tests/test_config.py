@@ -198,6 +198,37 @@ class CheckTest(unittest.TestCase):
         self.assertTrue(warned.ok)
         self.assertTrue(warned.warnings)
 
+    def test_the_docker_run_keeps_command_line_overrides(self):
+        import contextlib
+        import io
+        import os
+        from unittest import mock
+
+        from virtulab.cli import build_parser, main
+        with TemporaryDirectory() as tmp:
+            Path(tmp, "virtulab.yml").write_text(
+                "board: lm3s6965evb\nbuild:\n  sources: [src/*.c]\n  include: [include]\n"
+                "  cflags: \"-DSAFE=1\"\ntests:\n  unit: {}\n  fault: {}\n")
+            Path(tmp, "src").mkdir()
+            Path(tmp, "src", "main.c").write_text("int main(void) { return 0; }\n")
+            env = {k: v for k, v in os.environ.items() if k != "VIRTULAB_IN_DOCKER"}
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch("virtulab.check._tool", return_value=None), \
+                    mock.patch("virtulab.project.shutil.which", return_value="/usr/bin/docker"), \
+                    mock.patch("virtulab.project.subprocess.run") as run, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                run.return_value.returncode = 0
+                code = main(["run", "-C", tmp, "--only", "unit", "--cflags", "-DSAFE=0 -O0", "-t", "5s"])
+        self.assertEqual(code, 0)
+        cmd = run.call_args[0][0]
+        inner = build_parser().parse_args(cmd[cmd.index("run", 2):])
+        self.assertEqual(inner.cflags, "-DSAFE=0 -O0")
+        self.assertEqual(inner.only, "unit")
+        self.assertEqual(inner.timeout, "5s")
+        self.assertEqual(inner.board, "lm3s6965evb")
+        self.assertEqual(inner.sources, ["src/*.c"])
+        self.assertEqual(inner.include, ["include"])
+
 
 class CatalogTest(unittest.TestCase):
     def test_every_board_and_module_is_consistent(self):

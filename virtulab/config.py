@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import MONITOR_MARK, VirtulabError, peripherals as custom, yamlite
+from . import DEVICES_DIR, MONITOR_MARK, VirtulabError, peripherals as custom, yamlite
 from .boards import BOARDS
 from .catalog import DEFAULT_TESTS, MODULES, PROTOCOLS, TESTS, get_module, get_test
 from .yamlite import Hex
@@ -289,6 +289,17 @@ def parse_pin(text: str) -> tuple[str, int]:
     return m[1], int(m[2])
 
 
+def _monitor_value(cfg: ProjectConfig, step) -> str:
+    """A start value as the emulator monitor reads it. A yes/no input of a library model, such as the
+    SHT31's CorruptCrc, takes true or false: the monitor will not turn 0.0 into a boolean."""
+    m = cfg.modules.get(step.module)
+    if m is not None:
+        source = DEVICES_DIR / f"{get_module(m.model).renode_type.rpartition('.')[2]}.cs"
+        if source.is_file() and re.search(rf"public\s+bool\s+{re.escape(step.prop)}\b", source.read_text()):
+            return "true" if step.value else "false"
+    return repr(step.value)
+
+
 def sim_path(cfg: ProjectConfig, name: str) -> str:
     """The emulator monitor path of a module, as used in `vl_sim("<path> Property value")`."""
     if name in cfg.analog:
@@ -398,7 +409,7 @@ def renode_repl(cfg: ProjectConfig, root: Path | None = None) -> str | None:
         lines.append("vl_rules: VirtuLab.Rules")
     if cfg.repl and root is not None:
         lines += (root / cfg.repl).read_text().splitlines()
-    monitor += [f"{sim_path(cfg, s.module)} {s.prop} {s.value!r}" for s in steps if s.at_ms == 0]
+    monitor += [f"{sim_path(cfg, s.module)} {s.prop} {_monitor_value(cfg, s)}" for s in steps if s.at_ms == 0]
     if not lines:
         return None
     # Time: the core runs from the 16 MHz reset clock, so SysTick counts at that rate and a

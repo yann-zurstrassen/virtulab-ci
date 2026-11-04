@@ -6,25 +6,24 @@
 <title>VirtuLab Setup</title>
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5b6573; --line: #d8dde4;
-    --accent: #2457d6; --accent-text: #ffffff; --ok: #1a7f37; --warn: #9a6700; --bad: #c62828;
-    --chip: #eef1f6; --code-bg: #0f1722; --code-text: #d7e0ee; --sel: #e8efff;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #0f141a; --panel: #171d25; --text: #e6eaf0; --muted: #98a3b3; --line: #2b3441;
-      --accent: #6d97ff; --accent-text: #0b1220; --ok: #4cc26b; --warn: #e3b341; --bad: #ff7b72;
-      --chip: #212a36; --code-bg: #0a0e14; --code-text: #d7e0ee; --sel: #1b2740;
-    }
+    --bg: #0b0d12; --panel: #141821; --text: #e3e7ef; --muted: #8b94a7; --line: #262c3a;
+    --accent: #5aa9ff; --accent-text: #06101f; --ok: #4fd18b; --warn: #ffc94d; --bad: #ff5d5d;
+    --chip: #1a1f2b; --code-bg: #07090d; --code-text: #d7e0ee; --sel: #16243a;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
+  body { margin: 0; background: radial-gradient(1200px 700px at 70% 10%, #131826 0%, var(--bg) 60%) fixed; color: var(--text);
     font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { padding: 20px 24px 8px; max-width: 1280px; margin: 0 auto; }
+  header { padding: 18px 24px 8px; max-width: 1560px; margin: 0 auto; }
+  .logo { font-weight: 700; } .logo span { color: var(--accent); }
   header h1 { margin: 0; font-size: 22px; }
   header p { margin: 4px 0 0; color: var(--muted); }
-  main { max-width: 1280px; margin: 0 auto; padding: 8px 24px 48px; display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  main { max-width: 1560px; margin: 0 auto; padding: 8px 24px 48px; display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr); gap: 20px; align-items: start; }
+  #boardsvg { width: 100%; height: auto; display: block; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .vb-new { animation: vbIn .6s cubic-bezier(.2,.8,.2,1); }
+  @keyframes vbIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .vb-new { animation: none; } }
   @media (max-width: 960px) { main { grid-template-columns: 1fr; padding: 8px 16px 48px; } header { padding: 16px; } }
   section.step, aside .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
     padding: 16px 18px; margin-bottom: 16px; }
@@ -80,11 +79,6 @@
     border-radius: 6px; cursor: pointer; }
   .tabs button[aria-selected="true"] { background: var(--chip); color: var(--text); font-weight: 600; }
   svg { width: 100%; height: auto; display: block; }
-  svg text { fill: var(--text); font: 12px system-ui, sans-serif; }
-  svg .muted { fill: var(--muted); }
-  svg rect.chip { fill: var(--chip); stroke: var(--line); }
-  svg rect.mod { fill: var(--sel); stroke: var(--accent); }
-  svg line { stroke: var(--muted); stroke-width: 1.5; }
   #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text);
     color: var(--bg); padding: 8px 16px; border-radius: 8px; display: none; z-index: 5; }
   #report { white-space: pre-wrap; }
@@ -124,7 +118,7 @@
 </head>
 <body>
 <header>
-  <h1>VirtuLab setup</h1>
+  <h1><span class="logo">Virtu<span>Lab</span></span> · set up your virtual board</h1>
   <p>Pick a board, attach sensors, choose tests. VirtuLab writes <code>virtulab.yml</code> and the CI file, then runs everything on a virtual board.</p>
   <p id="where" class="hint"></p>
 </header>
@@ -182,7 +176,8 @@
   <aside>
     <div class="box">
       <h2>Your virtual board</h2>
-      <div id="diagram"></div>
+      <p class="hint" id="board-hint" style="margin-bottom:6px"></p>
+      <svg id="boardsvg" viewBox="0 0 1000 640" role="img" aria-label="The virtual board and its sensors"></svg>
     </div>
     <div class="box">
       <h2>Board check</h2>
@@ -205,6 +200,7 @@
 </dialog>
 <div id="toast" role="status"></div>
 
+<script src="/boardart.js"></script>
 <script>
 "use strict";
 const token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
@@ -396,7 +392,7 @@ async function openDatasheet(id) {
     }
     return el("tr", {},
       el("td", { class: "says" }, el("b", {}, r.topic), r.datasheet, r.note ? el("small", {}, r.note) : "",
-        r.issue ? el("small", { style: "color:var(--warn)" }, "⚠ Datasheet issue: " + r.issue) : ""),
+        r.issue ? el("small", { style: "color:var(--warn)" }, "Datasheet issue: " + r.issue) : ""),
       el("td", {}, r.unverified ? el("span", { class: "st not-modelled" }, "unverified")
         : el("small", {}, r.source + (r.corroborated_by ? "; also " + r.corroborated_by.join(", ") : ""))),
       el("td", {}, el("span", { class: "st " + r.status }, STATUS[r.status])),
@@ -449,32 +445,22 @@ function setOption(t, o, raw) {
 
 /* ---------- right column ---------- */
 let lastPreview = null, tab = "yaml";
+let drawn = new Set();
 function drawDiagram() {
-  const mods = Object.entries(state.modules), b = board();
-  const h = Math.max(120, 50 + mods.length * 58), W = 420;
-  const svgNS = "http://www.w3.org/2000/svg";
-  const s = document.createElementNS(svgNS, "svg"); s.setAttribute("viewBox", `0 0 ${W} ${h}`);
-  s.setAttribute("role", "img"); s.setAttribute("aria-label", `${b.id} with ${mods.length} attached modules`);
-  const add = (tag, attrs, text) => { const n = document.createElementNS(svgNS, tag);
-    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text) n.textContent = text; s.append(n); return n; };
-  add("rect", { class: "chip", x: 12, y: 12, width: 150, height: h - 24, rx: 10 });
-  add("text", { x: 24, y: 36, "font-weight": 600 }, b.id);
-  add("text", { class: "muted", x: 24, y: 54 }, b.cpu + " · " + b.emulator);
-  add("text", { class: "muted", x: 24, y: 72 }, kib(b.flash) + " / " + kib(b.ram));
-  if (!mods.length) add("text", { class: "muted", x: 190, y: h / 2 + 4 }, b.buses && Object.keys(b.buses).length ? "No sensors attached yet" : "CPU only");
-  mods.forEach(([name, m], i) => {
-    const y = 40 + i * 58, mod = catalog.modules.find(x => x.id === m.model);
-    add("line", { x1: 162, y1: y + 18, x2: 238, y2: y + 18 });
-    add("text", { class: "muted", x: 168, y: y + 12 }, m.bus + (m.address != null ? " " + hex(m.address) : ""));
-    add("rect", { class: "mod", x: 238, y: y - 6, width: 168, height: 48, rx: 8 });
-    add("text", { x: 248, y: y + 12, "font-weight": 600 }, name);
-    add("text", { class: "muted", x: 248, y: y + 30 }, mod.title.length > 26 ? mod.id : mod.title);
-  });
-  $("diagram").replaceChildren(s);
+  const b = board();
+  const mods = Object.entries(state.modules).map(([name, m]) => ({ name, model: m.model, bus: m.bus, address: m.address, cs: m.cs }));
+  const sensors = Object.keys(b.buses || {}).length > 0;
+  const art = VirtuBoard.draw($("boardsvg"), { board: { description: b.title, cpu: b.cpu, id: b.id }, modules: mods,
+    chipNote: "your firmware runs here", idleValue: "ready", idleLabel: "emulated from its datasheet",
+    emptyText: sensors ? "Add a sensor: it plugs in here" : "CPU only: QEMU boards cannot carry sensors" });
+  for (const m of mods) if (!drawn.has(m.name)) art.cards[m.name].group.classList.add("vb-new");
+  drawn = new Set(mods.map(m => m.name));
+  $("board-hint").textContent = `${b.id} · ${b.cpu} · ${kib(b.flash)} flash · ${kib(b.ram)} RAM · ${b.emulator}` +
+    (mods.length ? ` · ${mods.length} sensor${mods.length === 1 ? "" : "s"} attached` : "");
 }
 function drawChecks(res) {
   const box = $("checks"); box.replaceChildren();
-  const icon = { ok: "✅", warn: "⚠️", error: "❌" };
+  const icon = { ok: "OK", warn: "Note", error: "Error" };
   for (const f of res.findings)
     box.append(el("div", { class: "check " + f.level }, el("span", { class: "i" }, icon[f.level]),
       el("span", { class: "m" }, el("b", {}, f.subject + " "), f.message)));
@@ -496,7 +482,7 @@ function refresh() {
       const [res, prev] = await Promise.all([api("/api/check", body), api("/api/preview", body)]);
       drawChecks(res); lastPreview = prev; drawPreview();
     } catch (e) {
-      $("checks").replaceChildren(el("div", { class: "check error" }, el("span", { class: "i" }, "❌"), el("span", { class: "m" }, e.message)));
+      $("checks").replaceChildren(el("div", { class: "check error" }, el("span", { class: "i" }, "Error"), el("span", { class: "m" }, e.message)));
       $("run").disabled = true;
     }
   }, 120);
@@ -547,6 +533,13 @@ document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click
       $("created").textContent = "Editing the existing virtulab.yml. Create writes it back.";
     } else {
       state.board = "stm32f4_discovery";
+    }
+    if (new URLSearchParams(location.hash.slice(1)).has("readonly")) {
+      // inside the studio: show and try the setup, never write it
+      document.querySelector('[aria-labelledby="s4"]').hidden = true;
+      $("where").textContent = "This is the project's virtulab.yml. Add or remove sensors to try them: nothing is saved here.";
+      document.querySelector("header h1").textContent = "Board setup";
+      document.querySelector("header p").textContent = "The chip this project runs on, and the sensors wired to it. Each sensor is emulated from its datasheet.";
     }
     renderAll();
     const wanted = new URLSearchParams(location.hash.slice(1)).get("datasheet");  // #token=..&datasheet=adxl345

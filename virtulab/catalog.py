@@ -106,7 +106,7 @@ MODULES = {m.id: m for m in [
            "VirtuLab.TMP108",
            "Digital temperature sensor with 0.0625 °C resolution and alert output.",
            default_address=0x48, addresses=(0x48, 0x49, 0x4A, 0x4B),
-           sim=("Temperature",),
+           sim=("Temperature", "Silent", "Garbled"),
            gaps="Alert pin and one-shot conversion timing are not modelled.",
            needs_device_file=True,
            sample=Sample("test_thermostat_run", ("src/thermostat.c", "src/tmp108.c", "test/test_thermostat.c"))),
@@ -121,7 +121,7 @@ MODULES = {m.id: m for m in [
            "VirtuLab.INA219",
            "Measures bus voltage, shunt voltage, current and power of a supply rail, 0 to 32 V.",
            default_address=0x40, addresses=tuple(range(0x40, 0x50)),
-           sim=("BusVoltage", "Current", "ShuntResistance"),
+           sim=("BusVoltage", "Current", "ShuntResistance", "Silent", "Garbled"),
            gaps="Conversion time, averaging, operating modes, the bus-voltage range bit and "
                 "the overflow flag are not modelled.",
            needs_device_file=True,
@@ -140,7 +140,7 @@ MODULES = {m.id: m for m in [
            "3-axis accelerometer and 3-axis gyroscope with a temperature sensor.",
            default_address=0x68, addresses=(0x68, 0x69),
            sim=("AccelerationX", "AccelerationY", "AccelerationZ", "AngularRateX", "AngularRateY",
-                "AngularRateZ", "Temperature"),
+                "AngularRateZ", "Temperature", "Silent", "Garbled"),
            gaps="Sample-rate divider, filter, FIFO, interrupts, the auxiliary I2C master and "
                 "self-test are not modelled. Sensor values read zero while the chip sleeps.",
            needs_device_file=True,
@@ -149,7 +149,7 @@ MODULES = {m.id: m for m in [
            "VirtuLab.SHT31",
            "Digital humidity and temperature sensor with CRC-protected 16-bit results.",
            default_address=0x44, addresses=(0x44, 0x45),
-           sim=("Temperature", "Humidity", "CorruptCrc", "ConversionTime"),
+           sim=("Temperature", "Humidity", "CorruptCrc", "ConversionTime", "Silent", "Garbled"),
            gaps="Alert thresholds and ART mode are not modelled, and clock stretching is not charged "
                 "any time. An early read returns 0xFF bytes, where a real chip would not acknowledge it.",
            needs_device_file=True,
@@ -318,12 +318,13 @@ TESTS = {t.id: t for t in [
         options=(
             Option("sources", "list", [], "Sources of the scenario program", required=True),
             Option("include", "list", ["include"], "Include directories"),
-            Option("cases", "map", {}, "Situations by name: stimulus or stimulus_file, expect, forbid, faults",
+            Option("cases", "map", {}, "Situations by name: stimulus or stimulus_file, rules, expect, forbid, faults",
                    required=True),
             Option("target", "str", "", "Source file whose instructions a timed fault skips"),
             Option("functions", "list", [], "Sweep only these functions"),
         ),
-        limits="Follows the scripted input, with no model of how the world reacts to the firmware. "
+        limits="Follows the scripted input. The world reacts to the firmware only through pin rules, "
+               "with no physics model. "
                "Single skip per run. Not a model of physical glitches.",
     ),
 ]}

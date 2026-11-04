@@ -109,6 +109,21 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
             index = 0;
         }
 
+        // Wire faults, the same in every VirtuLab I2C model. Silent: every byte reads 0xFF, as an idle
+        // bus does (Renode cannot refuse an address, so the controller still sees an acknowledge).
+        // Garbled: on this chip, answers carry a wrong CRC, which is how its data is protected.
+        public bool Silent { get; set; }
+        public bool Garbled { get { return CorruptCrc; } set { CorruptCrc = value; } }
+
+        private byte[] Wire(byte[] bytes)
+        {
+            for(var i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = Silent ? (byte)0xFF : bytes[i];
+            }
+            return bytes;
+        }
+
         public byte[] Read(int count = 1)
         {
             var result = new byte[count];
@@ -123,7 +138,7 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
                 // read, so the bytes read as 0xFF, which no valid answer's CRC accepts.
                 result[i] = ready && index < response.Length ? response[index] : (byte)0xFF;
             }
-            return result;
+            return Wire(result);
         }
 
         public void FinishTransmission()
@@ -133,6 +148,7 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
 
         public void Reset()
         {
+            Silent = false;
             status = 0x8010;
             response = new byte[0];
             index = 0;

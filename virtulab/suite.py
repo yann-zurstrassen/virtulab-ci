@@ -430,7 +430,8 @@ def _sweep(cfg: ProjectConfig, root: Path, work: Path, probe: str, name: str, pr
     else:
         bcfg = BuildConfig(board=board, sources=[probe, *option(cfg, "fault", "sources")],
                            include_dirs=list(option(cfg, "fault", "include")),
-                           cflags=shlex.split(cfg.cflags), runtime=cfg.runtime)
+                           # quiet assertions: the report's check records must not change the code being glitched
+                           cflags=[*shlex.split(cfg.cflags), "-DVL_TEST_QUIET"], runtime=cfg.runtime)
         result = build(root, bcfg, work / "fault" / name / "build", exclude=work)
         if not result.ok or result.elf is None:
             return CheckOutcome("fault", FAIL, f"the fault probe {probe} did not build", result.log)

@@ -108,6 +108,23 @@ def scaffold(cfg: ProjectConfig, root: Path, force: bool = False) -> list[str]:
             raise VirtulabError(f"The sample firmware supports one {catalog.MODULES[model].title}. "
                                 "Declare one, or start without sample firmware.")
 
+    files = starter_files(cfg, features)
+    existing = [p for p in files if (root / p).exists()]
+    if existing and not force:
+        raise VirtulabError(f"Would overwrite {', '.join(existing[:3])}"
+                            f"{' …' if len(existing) > 3 else ''}. Use --force, or start without a template.")
+    for rel, text in files.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+
+    apply_defaults(cfg)
+    return sorted(files)
+
+
+def starter_files(cfg: ProjectConfig, features: list[str] | None = None) -> dict[str, str]:
+    """The sample firmware for this setup, by path: what `scaffold` writes, without writing it."""
+    features = _features(cfg) if features is None else features
     files: dict[str, str] = {}
     for feature in features:
         module = next((m for m in cfg.modules.values() if m.model == feature), None)
@@ -127,15 +144,4 @@ def scaffold(cfg: ProjectConfig, root: Path, force: bool = False) -> list[str]:
                     text = text.replace(key, value)
                 files[path.relative_to(TEMPLATES / feature).as_posix()] = text
     files["test/test_suites.h"], files["test/test_main.c"] = _test_files(features)
-
-    existing = [p for p in files if (root / p).exists()]
-    if existing and not force:
-        raise VirtulabError(f"Would overwrite {', '.join(existing[:3])}"
-                            f"{' …' if len(existing) > 3 else ''}. Use --force, or start without a template.")
-    for rel, text in files.items():
-        target = root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
-
-    apply_defaults(cfg)
-    return sorted(files)
+    return files

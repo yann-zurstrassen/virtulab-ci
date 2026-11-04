@@ -52,6 +52,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Antmicro.Renode.Core;
+using Antmicro.Renode.Logging;
 using Antmicro.Renode.Peripherals;
 using Antmicro.Renode.Peripherals.CPU;
 using Antmicro.Renode.Peripherals.Timers;
@@ -90,6 +91,7 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
             }}
             done = true;
             File.WriteAllText(@"{marker}", "");
+            this.Log(LogLevel.Warning, "VL_GLITCH skipped 0x{{0:X}}", address);
             target.RemoveHooksAt({at}UL);
             target.PC = {resume}UL;
         }}

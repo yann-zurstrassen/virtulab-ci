@@ -13,7 +13,7 @@ from .baseline import NO_REF, NOTHING_TO_COMPARE, build_baseline
 from .boards import BOARDS, get_board
 from .build import BuildConfig, addr2line, build
 from .emulator import run as run_emulator
-from .parse import parse_fault, parse_tests
+from .parse import parse_fault, parse_tests, without_checks
 from .report import (
     BUILD_FAILED, CRASHED, FAILED, PASSED, STATUS_LABELS, TIMEOUT, Outcome, fmt_bytes, fmt_capacity, fmt_delta, marker,
     render_markdown,
@@ -225,7 +225,7 @@ def run_unit(opts: Options) -> tuple[Outcome, Path, Path]:
         github.group("Emulator output")
         outcome.run = run_emulator(board, result.elf, opts.timeout, work_dir / "emulator",
                                    peripherals)
-        print(outcome.run.output)
+        print(without_checks(outcome.run.output))
         github.end_group()
         if outcome.run.sim_commands:
             print("🎛️  Emulator commands from vl_sim():")
@@ -381,6 +381,22 @@ def build_parser() -> argparse.ArgumentParser:
     ci.add_argument("--provider", choices=["github", "gitlab"], help="default: from virtulab.yml")
     ci.add_argument("--write", action="store_true", help="write the file instead of printing it")
 
+    fl = sub.add_parser("faults", help="generate fault cases from your scenarios: every peripheral fault, "
+                                        "at every moment the inputs change")
+    fl.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
+    fl.add_argument("--cflags", default=None, help="compiler flags instead of the project's")
+
+    st = sub.add_parser("studio", help="open the project's code, board and scenarios in one page")
+    st.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
+    st.add_argument("--port", type=int, default=8765)
+    st.add_argument("--no-browser", action="store_true")
+    st.add_argument("--app", action="store_true",
+                    help="open in its own app window (Chrome, Edge, Chromium or Brave) instead of a browser tab")
+    st.add_argument("--variant", action="append", default=[], metavar="NAME=FLAGS",
+                    help="another build of the firmware to compare, e.g. plain=-DSAFE=0 (repeatable)")
+    st.add_argument("--prepare", action="store_true",
+                    help="record every scenario and glitch sweep now, so the studio shows them at once")
+
     ui = sub.add_parser("ui", help="open the setup page in your browser")
     ui.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
     ui.add_argument("--port", type=int, default=8765)
@@ -394,6 +410,13 @@ def build_parser() -> argparse.ArgumentParser:
     tr = sub.add_parser("trace", help="record every register access of a run and show it as a page")
     tr.add_argument("-C", "--directory", default=".", help="project directory (default: .)")
     tr.add_argument("--case", metavar="NAME", help="trace this case of tests.scenarios instead of the unit tests")
+    tr.add_argument("--cflags", default=None, help='compiler flags instead of the project\'s, e.g. "-DSAFE=0"')
+    tr.add_argument("--fault", metavar="FAULT@TIME",
+                    help="with --case: inject one peripheral fault, as the fault sweep does, "
+                         "e.g. imu.*.silent@1300ms or imu.AccelerationZ.stuck@1000ms")
+    tr.add_argument("--skip", metavar="ADDRESS@TIME",
+                    help="with --case: skip the instruction at ADDRESS on its first execution after TIME, "
+                         "as one run of the glitch sweep does, e.g. 0x080002a8@1300ms")
 
     cmp = sub.add_parser("compare", help="compare the twin's bus messages with a recording from real hardware")
     cmp.add_argument("twin", help="the twin's messages: .virtulab/trace/messages.csv, or trace.json")
@@ -480,13 +503,23 @@ def run_command(ns: argparse.Namespace) -> int:
         cfg.tests["fuzz"]["seconds"] = fuzz_seconds
     if cfg.board not in BOARDS:
         raise VirtulabError(f"Unknown board '{cfg.board}'. Run `virtulab catalog` to list boards.")
-    return run_project(select_tests(cfg, only, skip), root, base)
+    shown, hide = [], False
+    for arg in getattr(ns, "argv", []) or []:
+        if hide:
+            hide = False
+        elif arg in ("-C", "--directory"):
+            hide = True
+        elif not arg.startswith("--directory="):
+            shown.append(arg)
+    command = "virtulab " + " ".join(shlex.quote(a) for a in shown) if shown else ""
+    return run_project(select_tests(cfg, only, skip), root, base, command)
 
 
 def main(argv: list[str] | None = None) -> int:
     from .tools import activate
     activate()
     ns = build_parser().parse_args(argv)
+    ns.argv = list(argv) if argv is not None else sys.argv[1:]
     try:
         if ns.command == "boards":
             print(f"{'Board':<18} {'CPU':<11} {'Flash':>8} {'RAM':>8}  {'Emulator':<8}  Device")

@@ -253,12 +253,16 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
             }}
         }}
 
+        // Wire faults, the same in every VirtuLab I2C model: Silent reads 0xFF, Garbled flips bits.
+        public bool Silent {{ get; set; }}
+        public bool Garbled {{ get; set; }}
+
         public byte[] Read(int count = 1)
         {{
             var result = new byte[count];
             for(var i = 0; i < count; i++)
             {{
-                result[i] = memory[pointer];
+                result[i] = Silent ? (byte)0xFF : Garbled ? (byte)(memory[pointer] ^ 0x24) : memory[pointer];
                 pointer = (byte)(pointer + 1);
             }}
             return result;
@@ -271,6 +275,8 @@ namespace Antmicro.Renode.Peripherals.VirtuLab
         public void Reset()
         {{
             pointer = 0;
+            Silent = false;
+            Garbled = false;
             Array.Clear(memory, 0, memory.Length);
             Array.Clear(writable, 0, writable.Length);
 {resets}

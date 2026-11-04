@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VirtuLab evidence record</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#141821; --line:#262c3a; --text:#e3e7ef; --muted:#8b94a7; --accent:#5aa9ff;
+          --ok:#4fd18b; --bad:#ff5d5d; --warn:#ffc94d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--text);
+         background:radial-gradient(1200px 700px at 30% 0%, #131826 0%, var(--bg) 60%) fixed; }
+  .wrap { max-width:1100px; margin:0 auto; padding:22px 24px 40px; }
+  h1 { font-size:22px; margin:0 0 4px; } h1 span { color:var(--accent); }
+  .lead { color:var(--muted); margin:0 0 18px; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:22px 0 8px; font-weight:600; }
+  .facts { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
+  .fact { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .fact small { display:block; color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; }
+  .fact b { font-size:15px; word-break:break-all; }
+  .fact.ok b { color:var(--ok); } .fact.bad b { color:var(--bad); } .fact.warn b { color:var(--warn); }
+  code { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { text-align:left; color:var(--muted); font-weight:600; font-size:12px; padding:8px 12px; border-bottom:1px solid var(--line); }
+  td { padding:9px 12px; border-bottom:1px solid #1d2230; vertical-align:top; font-size:13px; }
+  td.r { font-weight:700; white-space:nowrap; } td.r.pass { color:var(--ok); } td.r.fail { color:var(--bad); }
+  td.lim { color:#c9b37a; }
+  .note { color:var(--muted); font-size:12.5px; margin-top:16px; }
+  .repro { display:flex; gap:10px; align-items:center; background:#07090d; border:1px solid #262c3a; border-radius:8px;
+           padding:7px 10px; margin:0 0 14px; font-size:12.5px; color:var(--muted); }
+  .repro code { flex:1; color:#d7e0ee; font:12.5px ui-monospace, Menlo, monospace; word-break:break-all; }
+  .repro button, .copy { background:#1a1f2b; color:#e3e7ef; border:1px solid #262c3a; border-radius:6px; font:inherit; font-size:12px; padding:3px 9px; cursor:pointer; }
+  .hitcmd { width:100%; font:11.5px ui-monospace, Menlo, monospace; color:#8b94a7; margin:-2px 0 4px 26px; }
+
+  /* ---- classic desktop theme: colours, fonts, borders and corners only ---- */
+  :root { --bg:#c0c0c0; --panel:#c0c0c0; --panel2:#c0c0c0; --line:#808080; --text:#000; --muted:#404040;
+          --accent:#000080; --ok:#007a00; --bad:#b00000; --warn:#7a5a00; }
+  body { background:#c0c0c0 !important; color:#000 !important; font-family:Tahoma, Verdana, "MS Sans Serif", Geneva, sans-serif !important; }
+  code, pre, .repro code, .hitcmd, td.f, td.where, td.c, td.addr { font-family:"Courier New", Courier, monospace !important; }
+  header { background:#000080 !important; border-bottom:2px solid #000 !important; }
+  header .logo, header .logo span, header .crumb, header .crumb b { color:#fff !important; }
+  h2 { color:#000 !important; }
+  .pill { border-radius:0 !important; }
+  .pill.bad { background:#b00000 !important; color:#fff !important; } .pill.ok { background:#008000 !important; color:#fff !important; }
+  .how div, .card, .vocab span, .found, .fact { background:#c0c0c0 !important; border:0 !important; border-radius:0 !important;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; color:#000 !important; }
+  .how div span, .card .desc, .note, .numbers, .lead, .fact small { color:#202020 !important; }
+  .how div i { color:#000080 !important; } .numbers b, .card .name { color:#000 !important; }
+  .vocab b { color:#7a5a00 !important; }
+  .found.bad { background:#ffe8e8 !important; } .found.ok { background:#e8ffe8 !important; color:#005a00 !important; }
+  .found h2 { color:#900000 !important; } .found .said, .found .x { color:#b00000 !important; }
+  .found .when, .hitcmd { color:#404040 !important; }
+  .found button, .repro button, button { background:#c0c0c0 !important; color:#000 !important; border:0 !important; border-radius:0 !important; font-weight:700;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  .repro { background:#fff !important; border:0 !important; border-radius:0 !important; color:#404040 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .repro code { color:#000 !important; }
+  pre { background:#fff !important; color:#000 !important; border-radius:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  pre div .n { color:#808080 !important; }
+  pre div.fatal { background:#ffe0e0 !important; border-left-color:#b00000 !important; }
+  pre div.hover { background:#ffff99 !important; border-left-color:#000080 !important; }
+  table { background:#fff; } th { background:#c0c0c0 !important; color:#000 !important; border-bottom:1px solid #808080 !important; }
+  td { border-bottom:1px solid #dfdfdf !important; color:#000; }
+  tr:hover td { background:#ffffcc !important; } tr.fatal td { background:#ffe8e8 !important; }
+  td.where, td.f { color:#202020 !important; } td.c { color:#000080 !important; } td.f .k { color:#7a5a00 !important; }
+  .cell { border-radius:0 !important; }
+  .held { background:#d8f0d8 !important; color:#006000 !important; }
+  .broken { background:#b00000 !important; color:#fff !important; box-shadow:none !important; }
+  .crashed { background:#fff0b0 !important; color:#7a5a00 !important; }
+  .not_reached { color:#a0a0a0 !important; }
+  .legend { color:#202020 !important; }
+  .tag { border-radius:0 !important; border:1px solid #808080; background:#fff !important; }
+  .tag.never { color:#a00000 !important; } .tag.ok { color:#006000 !important; } .tag.skip { color:#404040 !important; }
+  .scroll { box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .fact b { color:#000 !important; } .fact.ok b { color:#007a00 !important; } .fact.bad b { color:#b00000 !important; } .fact.warn b { color:#7a5a00 !important; }
+  td.r.pass { color:#007a00 !important; } td.r.fail { color:#b00000 !important; } td.lim { color:#5a4000 !important; }
+  h1 { color:#000 !important; } h1 span { color:#000080 !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Evidence <span>record</span></h1>
+  <p class="lead">What ran, on which build, with which tools, and with what result. This is an input to a safety or security case, not a statement of compliance with any standard.</p>
+  <div id="repro"></div>
+  <div class="facts" id="facts"></div>
+  <h2>Checks, each with what it does not show</h2>
+  <table id="checks"></table>
+  <h2>Emulated peripherals, and the evidence behind each model</h2>
+  <table id="models"></table>
+  <h2>Inputs, with their SHA-256</h2>
+  <table id="inputs"></table>
+  <h2>Tools that produced this result</h2>
+  <table id="tools"></table>
+  <p class="note">The same record is written as <code>evidence.json</code> (for tools), <code>EVIDENCE.md</code> (for people), <code>junit.xml</code> (for CI) and <code>results.sarif</code> (for code scanning), in <code>.virtulab/evidence</code> after every run.</p>
+</div>
+<script>
+const E = /*EVIDENCE_DATA*/null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+if (E.command) $("repro").innerHTML = `<div class="repro">Reproduce, in the project folder: <code>${esc(E.command)}</code></div>`;
+const facts = [
+  ["Result", E.overall, E.overall === "pass" ? "ok" : "bad"],
+  ["Commit", (E.commit || "not a git checkout").slice(0, 12) + (E.tree_clean === false ? " + uncommitted changes" : ""), E.tree_clean === false ? "warn" : ""],
+  ["Board", E.board, ""],
+  ["Generated", (E.generated || "").replace("T", " ").replace("Z", " UTC") + " · VirtuLab " + esc(E.virtulab), ""],
+];
+if (E.image) facts.push(["Firmware image SHA-256", E.image.sha256, ""], ["Flash / RAM", `${E.image.flash} / ${E.image.ram} bytes`, ""]);
+$("facts").innerHTML = facts.map(([k, v, c]) => `<div class="fact ${c}"><small>${k}</small><b>${esc(v)}</b></div>`).join("");
+$("checks").innerHTML = `<tr><th>Check</th><th>Result</th><th>Details</th><th>What it does not show</th></tr>` +
+  E.checks.map(c => `<tr><td><code>${esc(c.test)}</code></td><td class="r ${c.status}">${c.status === "pass" ? "Pass" : c.status === "fail" ? "Fail" : esc(c.status)}</td>
+    <td>${esc(c.summary)}</td><td class="lim">${esc(c.limits || "")}</td></tr>`).join("");
+$("models").innerHTML = `<tr><th>Peripheral</th><th>Model</th><th>Evidence</th><th>Model file SHA-256</th></tr>` +
+  Object.entries(E.models || {}).map(([n, e]) => `<tr><td><code>${esc(n)}</code></td><td>${esc(e.title)}</td>
+    <td><b>${esc(e.trust.label)}</b><br><span style="color:var(--muted)">${esc(e.trust.detail)}</span></td><td><code style="font-size:11px;word-break:break-all">${esc(e.sha256 || "—")}</code></td></tr>`).join("");
+$("inputs").innerHTML = `<tr><th>File</th><th>SHA-256</th></tr>` +
+  Object.entries(E.inputs || {}).map(([n, v]) => `<tr><td><code>${esc(n)}</code></td><td><code style="font-size:11px">${esc(v)}</code></td></tr>`).join("");
+$("tools").innerHTML = `<tr><th>Tool</th><th>Version</th></tr>` +
+  Object.entries(E.tools || {}).map(([k, v]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(v)}</td></tr>`).join("");
+</script>
+</body>
+</html>

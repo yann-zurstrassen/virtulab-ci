@@ -1,0 +1,13 @@
+# Sensirion's SHT3x driver, unchanged, tested on a virtual board with an emulated SHT31.
+# Run it with ./run.sh, or: python3 -m virtulab run -C examples/sensirion-sht3x
+version: 1
+board: stm32f4_discovery
+build:
+  sources: [src/*.c, hal/*.c, vendor/sensirion/*.c, test/*.c]
+  include: [include, vendor/sensirion, test]
+  cflags: "-std=c99 -Wall -Wextra"
+timeout: 60s
+modules:
+  air: { model: sht31, bus: i2c1, address: 0x44 }
+tests:
+  unit: {}

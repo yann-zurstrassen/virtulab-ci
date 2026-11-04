@@ -1,0 +1,68 @@
+# Clean clone of feat/security-positioning @ 63107c2, `make test`
+# Machine: Apple M4 Pro, 14 cores, macOS 26.6.2, QEMU 11.1.1, arm-none-eabi-gcc 15.3.1, Apple clang 21
+
+python3 -m virtulab run -b lm3s6965evb -I include -I examples/crc/include -s src/parser.c src/auth.c src/sensor.c src/hal/sensor_hal_nominal.c examples/crc/src/crc.c test/test_main.c test/test_crc.c test/test_parser.c test/test_auth.c test/test_sensor.c --cflags="-std=c99 -Wall -Wextra -Werror -Wconversion -ffreestanding "
+🚀 VirtuLab CI 0.1.0 — lm3s6965evb (Cortex-M3, TI Stellaris LM3S6965)
+── 🔨 Build ─────────────────────────────────────────────────────
+  src/parser.c
+  src/auth.c
+  src/sensor.c
+  src/hal/sensor_hal_nominal.c
+  examples/crc/src/crc.c
+  test/test_main.c
+  test/test_crc.c
+  test/test_parser.c
+  test/test_auth.c
+  test/test_sensor.c
+📊 Flash 5,912 B / 256 KiB · RAM 236 B / 64 KiB (text 5,908, data 4, bss 232)
+⚡ Emulating on QEMU lm3s6965evb (timeout 30s)
+── Emulator output ─────────────────────────────────────────────
+test/test_crc.c:35:test_crc_crc32_of_empty_buffer_is_zero:PASS
+test/test_crc.c:36:test_crc_crc32_matches_check_value:PASS
+test/test_crc.c:37:test_crc_crc32_update_matches_single_pass:PASS
+test/test_crc.c:38:test_crc_crc16_ccitt_matches_check_value:PASS
+
+-----------------------
+4 Tests 0 Failures 0 Ignored
+OK
+test/test_parser.c:103:test_parser_accepts_known_frame:PASS
+test/test_parser.c:104:test_parser_extracts_payload_of_known_frame:PASS
+test/test_parser.c:105:test_parser_roundtrips_max_payload:PASS
+test/test_parser.c:106:test_parser_accepts_empty_payload:PASS
+test/test_parser.c:107:test_parser_rejects_bad_start_byte:PASS
+test/test_parser.c:108:test_parser_rejects_corrupted_payload:PASS
+test/test_parser.c:109:test_parser_rejects_truncated_frame:PASS
+test/test_parser.c:110:test_parser_rejects_length_byte_far_above_maximum:PASS
+test/test_parser.c:111:test_parser_clears_frame_on_error:PASS
+test/test_parser.c:112:test_parser_rejects_null_arguments:PASS
+
+-----------------------
+10 Tests 0 Failures 0 Ignored
+OK
+test/test_auth.c:96:test_auth_grants_correct_pin:PASS
+test/test_auth.c:97:test_auth_denies_wrong_pin:PASS
+test/test_auth.c:98:test_auth_denies_pin_differing_only_in_last_byte:PASS
+test/test_auth.c:99:test_auth_rejects_short_pin_without_reading_past_it:PASS
+test/test_auth.c:100:test_auth_rejects_long_pin:PASS
+test/test_auth.c:101:test_auth_locks_after_max_wrong_attempts:PASS
+test/test_auth.c:102:test_auth_rejects_correct_pin_once_locked:PASS
+test/test_auth.c:103:test_auth_success_resets_failure_counter:PASS
+test/test_auth.c:104:test_auth_counts_wrong_length_towards_lockout:PASS
+test/test_auth.c:105:test_auth_rejects_null_arguments:PASS
+test/test_auth.c:106:test_auth_init_rejects_wrong_pin_length:PASS
+
+-----------------------
+11 Tests 0 Failures 0 Ignored
+OK
+test/test_sensor.c:49:test_sensor_first_sample_is_about_room_temperature:PASS
+test/test_sensor.c:50:test_sensor_stays_healthy_over_repeated_samples:PASS
+test/test_sensor.c:51:test_sensor_rejects_null_arguments:PASS
+
+-----------------------
+3 Tests 0 Failures 0 Ignored
+OK
+✅ PASSED in 0.09s — 28/28 tests passed
+📝 Report written to .virtulab/report.md
+real 0.62
+user 0.33
+sys 0.41

@@ -1,0 +1,4 @@
+// Devices on the custom board, added to the STM32F4 Discovery platform.
+// VirtuLab.TMP108 is datasheet-accurate; Renode's built-in Sensors.TMP108 is a
+// TMP103 stub with 1 °C resolution.
+tmp108: VirtuLab.TMP108 @ i2c1 0x48

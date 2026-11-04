@@ -1,0 +1,16 @@
+# Bench session: the same firmware runs on a real STM32F4 Discovery with an SHT31, and on the twin.
+# Before the twin run, set the two values below to what a reference thermometer reads at the bench.
+version: 1
+board: stm32f4_discovery
+build:
+  sources: [src/*.c, hal/*.c, vendor/sensirion/*.c]
+  include: [include, vendor/sensirion]
+  cflags: "-std=c99 -Wall -Wextra"
+timeout: 60s
+modules:
+  air: { model: sht31, bus: i2c1, address: 0x44 }
+stimulus:
+  - { at: 0ms, set: air.Temperature, value: 22.0 }
+  - { at: 0ms, set: air.Humidity, value: 45.0 }
+tests:
+  unit: {}

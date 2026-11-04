@@ -1,0 +1,31 @@
+# Clean clone of feat/security-positioning @ 63107c2, `make fault`
+# Machine: Apple M4 Pro, 14 cores, macOS 26.6.2, QEMU 11.1.1, arm-none-eabi-gcc 15.3.1, Apple clang 21
+
+mkdir -p .ci
+python3 -m virtulab run -b lm3s6965evb -I include -I examples/crc/include -s fault/auth_probe.c src/auth.c --cflags="-std=c99 -Wall -Wextra -Werror -Wconversion -ffreestanding " --work-dir .virtulab/fault
+🚀 VirtuLab CI 0.1.0 — lm3s6965evb (Cortex-M3, TI Stellaris LM3S6965)
+── 🔨 Build ─────────────────────────────────────────────────────
+  fault/auth_probe.c
+  src/auth.c
+📊 Flash 1,784 B / 256 KiB · RAM 188 B / 64 KiB (text 1,780, data 4, bss 184)
+⚡ Emulating on QEMU lm3s6965evb (timeout 30s)
+── Emulator output ─────────────────────────────────────────────
+fault/auth_probe.c:25:test_auth_fault_wrong_pin_is_never_granted:PASS
+
+-----------------------
+1 Tests 0 Failures 0 Ignored
+OK
+✅ PASSED in 0.03s — 1/1 tests passed
+📝 Report written to .virtulab/fault/report.md
+set -eu -o pipefail; tools/fault_inject.sh --elf .virtulab/fault/build/firmware.elf --board lm3s6965evb \
+	    --source src/auth.c | tee .ci/fault.txt
+== Fault injection: single instruction skip ==
+image: .virtulab/fault/build/firmware.elf  board: lm3s6965evb  gdb: arm-none-eabi-gdb
+original run (no fault): denied
+tampered     function+offset            instruction                  original  faulted
+swept=78 applied=56 not_reached=22 denied=50 crashed_or_hung=6 bypass=0
+VERDICT: no auth bypass found by single instruction skip (56 instructions tried, first execution only)
+FAULT status=survived swept=56 bypass=0 crashed=6
+real 40.15
+user 32.37
+sys 5.74

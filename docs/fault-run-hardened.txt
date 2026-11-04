@@ -1,0 +1,11 @@
+$ make fault AUTH_HARDENED=1   (sweep output only)
+== Fault injection: single instruction skip ==
+image: .virtulab/fault/build/firmware.elf  board: lm3s6965evb  gdb: arm-none-eabi-gdb
+original run (no fault): denied
+tampered     function+offset            instruction                  original  faulted
+swept=78 applied=56 not_reached=22 denied=50 crashed_or_hung=6 bypass=0
+VERDICT: no auth bypass found by single instruction skip (56 instructions tried, first execution only)
+FAULT status=survived swept=56 bypass=0 crashed=6
+real 39.68
+user 32.20
+sys 5.64

@@ -1,0 +1,22 @@
+# A tank-level sensor that exists in no catalog, defined here as a register list.
+# The input comes from a timeline and a recorded trace, on the emulator's virtual clock.
+version: 1
+board: stm32f4_discovery
+build:
+  sources: [src/*.c, test/*.c]
+  include: [include]
+  cflags: "-std=c99 -Wall -Wextra"
+timeout: 30s
+peripherals:
+  tank:
+    bus: i2c1
+    address: 0x55
+    registers:
+      - { name: ID, at: 0x00, reset: 0xA5, access: ro }
+      - { name: LEVEL, at: 0x01, size: 2, access: ro }
+      - { name: LIMIT, at: 0x03, size: 2, reset: 800 }
+stimulus:
+  - { at: 0ms, set: tank.LEVEL, value: 100 }
+stimulus_file: inputs/filling.csv
+tests:
+  unit: {}

@@ -1,0 +1,14 @@
+$ make fault AUTH_HARDENED=0   (sweep output only)
+== Fault injection: single instruction skip ==
+image: .virtulab/fault/build/firmware.elf  board: lm3s6965evb  gdb: arm-none-eabi-gdb
+original run (no fault): denied
+tampered     function+offset            instruction                  original  faulted
+0x000000fc   auth_verify+0x30           orr.w r4, r4, r2             denied    BYPASS (wrong PIN granted)
+0x00000102   auth_verify+0x36           cbnz r4, 10a <auth_verify+0x3e> denied    BYPASS (wrong PIN granted)
+swept=51 applied=36 not_reached=15 denied=31 crashed_or_hung=3 bypass=2
+VERDICT: auth bypass reachable by single instruction skip
+FAULT status=bypass swept=36 bypass=2 crashed=3
+make: *** [fault] Error 1
+real 35.29
+user 30.34
+sys 3.80

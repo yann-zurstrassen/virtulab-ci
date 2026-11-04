@@ -1,0 +1,284 @@
+QEMU 11.1.1 monitor - type 'help' for more information
+(qemu) i[K[Din[K[D[Dinf[K[D[D[Dinfo[K[D[D[D[Dinfo [K[D[D[D[D[Dinfo q[K[D[D[D[D[D[Dinfo qt[K[D[D[D[D[D[D[Dinfo qtr[K[D[D[D[D[D[D[D[Dinfo qtre[K[D[D[D[D[D[D[D[D[Dinfo qtree[K
+bus: main-system-bus
+  type System
+  dev: unimplemented-device, id ""
+    size = 4096 (0x1000)
+    name = "flash-control"
+    mmio 00000000400fd000/0000000000001000
+  dev: unimplemented-device, id ""
+    size = 4096 (0x1000)
+    name = "hibernation"
+    mmio 00000000400fc000/0000000000001000
+  dev: unimplemented-device, id ""
+    size = 4096 (0x1000)
+    name = "analogue-comparator"
+    mmio 000000004003c000/0000000000001000
+  dev: unimplemented-device, id ""
+    size = 4096 (0x1000)
+    name = "QEI-1"
+    mmio 000000004002d000/0000000000001000
+  dev: unimplemented-device, id ""
+    size = 4096 (0x1000)
+    name = "QEI-0"
+    mmio 000000004002c000/0000000000001000
+  dev: unimplemented-device, id ""
+    size = 4096 (0x1000)
+    name = "PWM"
+    mmio 0000000040028000/0000000000001000
+  dev: stellaris-gamepad, id ""
+    gpio-out "" 5
+    keycodes = 5,99-102 (0x5,0x63-0x66)
+  dev: stellaris_enet, id ""
+    gpio-out "sysbus-irq" 1
+    mac = "52:54:00:12:34:56"
+    netdev = "hub0port0"
+    mmio 0000000040048000/0000000000001000
+  dev: pl022, id ""
+    gpio-out "sysbus-irq" 1
+    mmio 0000000040008000/0000000000001000
+    bus: ssi
+      type SSI
+      dev: ssd0323, id ""
+        gpio-in "" 1
+        gpio-in "ssi-gpio-cs" 1
+        cs = 1 (0x1)
+      dev: ssi-sd, id ""
+        gpio-in "ssi-gpio-cs" 1
+        cs = 0 (0x0)
+        bus: sd-bus
+          type sd-bus
+          dev: sd-card-spi, id ""
+            spec_version = 3 (0x3)
+            drive = "sd0"
+  dev: pl011_luminary, id ""
+    gpio-out "sysbus-irq" 6
+    clock-in "clk" freq_hz=0 Hz
+    chardev = ""
+    migrate-clk = true
+    mmio 000000004000e000/0000000000001000
+  dev: pl011_luminary, id ""
+    gpio-out "sysbus-irq" 6
+    clock-in "clk" freq_hz=0 Hz
+    chardev = ""
+    migrate-clk = true
+    mmio 000000004000d000/0000000000001000
+  dev: pl011_luminary, id ""
+    gpio-out "sysbus-irq" 6
+    clock-in "clk" freq_hz=0 Hz
+    chardev = "serial0"
+    migrate-clk = true
+    mmio 000000004000c000/0000000000001000
+  dev: stellaris-i2c, id ""
+    gpio-out "sysbus-irq" 1
+    mmio 0000000040021000/0000000000001000
+    bus: i2c
+      type i2c-bus
+  dev: stellaris-i2c, id ""
+    gpio-out "sysbus-irq" 1
+    mmio 0000000040020000/0000000000001000
+    bus: i2c
+      type i2c-bus
+  dev: pl061_luminary, id ""
+    gpio-in "" 8
+    gpio-out "" 8
+    gpio-out "sysbus-irq" 1
+    pullups = 255 (0xff)
+    pulldowns = 0 (0x0)
+    mmio 0000000040026000/0000000000001000
+  dev: pl061_luminary, id ""
+    gpio-in "" 8
+    gpio-out "" 8
+    gpio-out "sysbus-irq" 1
+    pullups = 255 (0xff)
+    pulldowns = 0 (0x0)
+    mmio 0000000040025000/0000000000001000
+  dev: pl061_luminary, id ""
+    gpio-in "" 8
+    gpio-out "" 8
+    gpio-out "sysbus-irq" 1
+    pullups = 255 (0xff)
+    pulldowns = 0 (0x0)
+    mmio 0000000040024000/0000000000001000
+  dev: pl061_luminary, id ""
+    gpio-in "" 8
+    gpio-out "" 8
+    gpio-out "sysbus-irq" 1
+    pullups = 255 (0xff)
+    pulldowns = 0 (0x0)
+    mmio 0000000040007000/0000000000001000
+  dev: pl061_luminary, id ""
+    gpio-in "" 8
+    gpio-out "" 8
+    gpio-out "sysbus-irq" 1
+    pullups = 255 (0xff)
+    pulldowns = 0 (0x0)
+    mmio 0000000040006000/0000000000001000
+  dev: pl061_luminary, id ""
+    gpio-in "" 8
+    gpio-out "" 8
+    gpio-out "sysbus-irq" 1
+    pullups = 255 (0xff)
+    pulldowns = 0 (0x0)
+    mmio 0000000040005000/0000000000001000
+  dev: pl061_luminary, id ""
+    gpio-in "" 8
+    gpio-out "" 8
+    gpio-out "sysbus-irq" 1
+    pullups = 255 (0xff)
+    pulldowns = 0 (0x0)
+    mmio 0000000040004000/0000000000001000
+  dev: luminary-watchdog, id ""
+    gpio-out "sysbus-irq" 1
+    clock-in "WDOGCLK" freq_hz=12.5 MHz
+    mmio 0000000040000000/0000000000001000
+  dev: stellaris-gptm, id ""
+    gpio-out "" 1
+    gpio-out "sysbus-irq" 1
+    clock-in "clk" freq_hz=12.5 MHz
+    mmio 0000000040033000/0000000000001000
+  dev: stellaris-gptm, id ""
+    gpio-out "" 1
+    gpio-out "sysbus-irq" 1
+    clock-in "clk" freq_hz=12.5 MHz
+    mmio 0000000040032000/0000000000001000
+  dev: stellaris-gptm, id ""
+    gpio-out "" 1
+    gpio-out "sysbus-irq" 1
+    clock-in "clk" freq_hz=12.5 MHz
+    mmio 0000000040031000/0000000000001000
+  dev: stellaris-gptm, id ""
+    gpio-out "" 1
+    gpio-out "sysbus-irq" 1
+    clock-in "clk" freq_hz=12.5 MHz
+    mmio 0000000040030000/0000000000001000
+  dev: stellaris-adc, id ""
+    gpio-in "" 1
+    gpio-out "sysbus-irq" 4
+    mmio 0000000040038000/0000000000001000
+  dev: ARM-bitband-memory, id ""
+    base = 1073741824 (0x40000000)
+    source-memory = "/machine/unattached/system[0]"
+    mmio ffffffffffffffff/0000000002000000
+  dev: ARM-bitband-memory, id ""
+    base = 536870912 (0x20000000)
+    source-memory = "/machine/unattached/system[0]"
+    mmio ffffffffffffffff/0000000002000000
+  dev: armv7m_systick, id ""
+    gpio-out "sysbus-irq" 1
+    clock-in "cpuclk" freq_hz=12.5 MHz
+    clock-in "refclk" freq_hz=0 Hz
+    mmio ffffffffffffffff/00000000000000e0
+  dev: armv7m_nvic, id ""
+    gpio-in "systick-trigger" 2
+    gpio-out "sysbus-irq" 1
+    num-irq = 80 (0x50)
+    num-prio-bits = 3 (0x3)
+    mmio ffffffffffffffff/0000000000001000
+  dev: armv7m, id ""
+    gpio-in "NMI" 1
+    gpio-out "SYSRESETREQ" 1
+    gpio-in "" 64
+    clock-in "cpuclk" freq_hz=12.5 MHz
+    clock-in "refclk" freq_hz=0 Hz
+    cpu-type = "cortex-m3-arm-cpu"
+    memory = "/machine/unattached/system[0]"
+    idau = ""
+    init-svtor = 0 (0x0)
+    init-nsvtor = 0 (0x0)
+    enable-bitband = true
+    start-powered-off = false
+    vfp = true
+    dsp = true
+    mpu-ns-regions = 4294967295 (0xffffffff)
+    mpu-s-regions = 4294967295 (0xffffffff)
+  dev: stellaris-sys, id ""
+    gpio-out "sysbus-irq" 1
+    clock-out "SYSCLK" freq_hz=12.5 MHz
+    user0 = 21586 (0x5452)
+    user1 = 5649426 (0x563412)
+    did0 = 268500994 (0x10010002)
+    did1 = 275988526 (0x1073402e)
+    dc0 = 16711807 (0xff007f)
+    dc1 = 1127423 (0x1133ff)
+    dc2 = 51335959 (0x30f5317)
+    dc3 = 252676095 (0xf0f87ff)
+    dc4 = 1342177407 (0x5000007f)
+    mmio 00000000400fe000/0000000000001000
+(qemu) i[K[Din[K[D[Dinf[K[D[D[Dinfo[K[D[D[D[Dinfo [K[D[D[D[D[Dinfo m[K[D[D[D[D[D[Dinfo mt[K[D[D[D[D[D[D[Dinfo mtr[K[D[D[D[D[D[D[D[Dinfo mtre[K[D[D[D[D[D[D[D[D[Dinfo mtree[K
+address-space: I/O
+  0000000000000000-000000000000ffff (prio 0, container): io
+
+address-space: bitband-source
+address-space: bitband-source
+address-space: memory
+  0000000000000000-ffffffffffffffff (prio -1, i/o): system
+    0000000000000000-000000000003ffff (prio 0, rom): stellaris.flash
+    0000000020000000-000000002000ffff (prio 0, ram): stellaris.sram
+    0000000040000000-0000000040000fff (prio 0, i/o): cmsdk-apb-watchdog
+    0000000040004000-0000000040004fff (prio 0, i/o): pl061
+    0000000040005000-0000000040005fff (prio 0, i/o): pl061
+    0000000040006000-0000000040006fff (prio 0, i/o): pl061
+    0000000040007000-0000000040007fff (prio 0, i/o): pl061
+    0000000040008000-0000000040008fff (prio 0, i/o): pl022
+    000000004000c000-000000004000cfff (prio 0, i/o): pl011
+    000000004000d000-000000004000dfff (prio 0, i/o): pl011
+    000000004000e000-000000004000efff (prio 0, i/o): pl011
+    0000000040020000-0000000040020fff (prio 0, i/o): i2c
+    0000000040021000-0000000040021fff (prio 0, i/o): i2c
+    0000000040024000-0000000040024fff (prio 0, i/o): pl061
+    0000000040025000-0000000040025fff (prio 0, i/o): pl061
+    0000000040026000-0000000040026fff (prio 0, i/o): pl061
+    0000000040028000-0000000040028fff (prio -1000, i/o): PWM
+    000000004002c000-000000004002cfff (prio -1000, i/o): QEI-0
+    000000004002d000-000000004002dfff (prio -1000, i/o): QEI-1
+    0000000040030000-0000000040030fff (prio 0, i/o): gptm
+    0000000040031000-0000000040031fff (prio 0, i/o): gptm
+    0000000040032000-0000000040032fff (prio 0, i/o): gptm
+    0000000040033000-0000000040033fff (prio 0, i/o): gptm
+    0000000040038000-0000000040038fff (prio 0, i/o): adc
+    000000004003c000-000000004003cfff (prio -1000, i/o): analogue-comparator
+    0000000040048000-0000000040048fff (prio 0, i/o): stellaris_enet
+    00000000400fc000-00000000400fcfff (prio -1000, i/o): hibernation
+    00000000400fd000-00000000400fdfff (prio -1000, i/o): flash-control
+    00000000400fe000-00000000400fefff (prio 0, i/o): ssys
+
+address-space: cpu-memory-0
+  0000000000000000-ffffffffffffffff (prio 0, container): armv7m-container
+    0000000000000000-ffffffffffffffff (prio -1, i/o): system
+      0000000000000000-000000000003ffff (prio 0, rom): stellaris.flash
+      0000000020000000-000000002000ffff (prio 0, ram): stellaris.sram
+      0000000040000000-0000000040000fff (prio 0, i/o): cmsdk-apb-watchdog
+      0000000040004000-0000000040004fff (prio 0, i/o): pl061
+      0000000040005000-0000000040005fff (prio 0, i/o): pl061
+      0000000040006000-0000000040006fff (prio 0, i/o): pl061
+      0000000040007000-0000000040007fff (prio 0, i/o): pl061
+      0000000040008000-0000000040008fff (prio 0, i/o): pl022
+      000000004000c000-000000004000cfff (prio 0, i/o): pl011
+      000000004000d000-000000004000dfff (prio 0, i/o): pl011
+      000000004000e000-000000004000efff (prio 0, i/o): pl011
+      0000000040020000-0000000040020fff (prio 0, i/o): i2c
+      0000000040021000-0000000040021fff (prio 0, i/o): i2c
+      0000000040024000-0000000040024fff (prio 0, i/o): pl061
+      0000000040025000-0000000040025fff (prio 0, i/o): pl061
+      0000000040026000-0000000040026fff (prio 0, i/o): pl061
+      0000000040028000-0000000040028fff (prio -1000, i/o): PWM
+      000000004002c000-000000004002cfff (prio -1000, i/o): QEI-0
+      000000004002d000-000000004002dfff (prio -1000, i/o): QEI-1
+      0000000040030000-0000000040030fff (prio 0, i/o): gptm
+      0000000040031000-0000000040031fff (prio 0, i/o): gptm
+      0000000040032000-0000000040032fff (prio 0, i/o): gptm
+      0000000040033000-0000000040033fff (prio 0, i/o): gptm
+      0000000040038000-0000000040038fff (prio 0, i/o): adc
+      000000004003c000-000000004003cfff (prio -1000, i/o): analogue-comparator
+      0000000040048000-0000000040048fff (prio 0, i/o): stellaris_enet
+      00000000400fc000-00000000400fcfff (prio -1000, i/o): hibernation
+      00000000400fd000-00000000400fdfff (prio -1000, i/o): flash-control
+      00000000400fe000-00000000400fefff (prio 0, i/o): ssys
+    0000000022000000-0000000023ffffff (prio 0, i/o): bitband
+    0000000042000000-0000000043ffffff (prio 0, i/o): bitband
+    00000000e0000000-00000000e00fffff (prio -1, i/o): nvic-default
+    00000000e000e000-00000000e000efff (prio 0, i/o): nvic_sysregs
+    00000000e000e010-00000000e000e0ef (prio 1, i/o): v7m_systick
+
+(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K

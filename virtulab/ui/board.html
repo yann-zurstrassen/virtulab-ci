@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VirtuLab board view</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#141821; --panel2:#1a1f2b; --line:#262c3a; --text:#e3e7ef; --muted:#8b94a7;
+          --accent:#5aa9ff; --read:#4fd18b; --write:#ffaa4d; --ok:#4fd18b; --bad:#ff5d5d; --warn:#ffc94d; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+         background:radial-gradient(1200px 700px at 30% 20%, #131826 0%, var(--bg) 60%); color:var(--text);
+         display:grid; grid-template-rows:auto 1fr auto; }
+  header { display:flex; align-items:center; gap:14px; padding:12px 20px; border-bottom:1px solid var(--line); }
+  .logo { font-weight:700; letter-spacing:.02em; }
+  .logo span { color:var(--accent); }
+  .crumb { color:var(--muted); }
+  .crumb b { color:var(--text); font-weight:600; }
+  .spacer { flex:1; }
+  a.link { color:var(--accent); text-decoration:none; font-size:13px; }
+  .pill { padding:4px 12px; border-radius:999px; font-weight:600; font-size:13px; border:1px solid var(--line); color:var(--muted); }
+  .pill.ok { color:#0b0d12; background:var(--ok); border-color:var(--ok); }
+  .pill.bad { color:#fff; background:var(--bad); border-color:var(--bad); }
+  .pill.warn { color:#0b0d12; background:var(--warn); border-color:var(--warn); }
+  main { display:grid; grid-template-columns:minmax(0, 1fr) 380px; min-height:0; }
+  #stage { position:relative; min-height:0; padding:10px 6px 0 14px; }
+  #stage svg { width:100%; height:100%; display:block; }
+  aside { border-left:1px solid var(--line); background:rgba(20,24,33,.75); overflow:auto; padding:14px 18px 18px; }
+  aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:14px 0 6px; font-weight:600; }
+  aside h2:first-child { margin-top:0; }
+  .title { font-size:20px; font-weight:700; margin:0 0 6px; }
+  .desc { color:#c8cedb; margin:0; font-size:13px; }
+  .steps { list-style:none; margin:0; padding:0; border-left:2px solid var(--line); }
+  .steps li { position:relative; padding:2px 0 5px 16px; color:var(--muted); transition:color .2s; }
+  .steps li::before { content:""; position:absolute; left:-6px; top:9px; width:10px; height:10px; border-radius:50%;
+                      background:var(--panel); border:2px solid var(--line); transition:all .2s; }
+  .steps li.past { color:var(--text); }
+  .steps li.past::before { background:var(--accent); border-color:var(--accent); }
+  .steps li.now::before { box-shadow:0 0 0 5px rgba(90,169,255,.25); }
+  .steps .t { font-family:ui-monospace, Menlo, monospace; font-size:12px; color:var(--accent); margin-right:6px; }
+  .rule { display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:8px; background:var(--panel2);
+          border:1px solid var(--line); margin-bottom:6px; font-family:ui-monospace, Menlo, monospace; font-size:13px; }
+  .rule .state { margin-left:auto; font-family:-apple-system, sans-serif; font-size:12px; color:var(--muted); }
+  .rule.ok { border-color:rgba(79,209,139,.6); } .rule.ok .state { color:var(--ok); }
+  .rule.bad { border-color:rgba(255,93,93,.7); } .rule.bad .state { color:var(--bad); }
+  .console { background:#07090d; border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-height:70px;
+             font-family:ui-monospace, Menlo, monospace; font-size:12.5px; }
+  .console div { white-space:pre-wrap; animation:pop .35s ease; }
+  .console .alarm { color:var(--bad); font-weight:600; } .console .warning { color:var(--warn); font-weight:600; }
+  .console .final { color:#9fe3bd; }
+  .console .t { color:#56607a; margin-right:8px; }
+  .console .empty { color:#56607a; animation:none; }
+  @keyframes pop { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  .glitch { margin:10px 0 0; padding:10px 12px; border-radius:10px; border:1px dashed rgba(255,201,77,.5);
+            background:rgba(255,201,77,.06); color:#d9c48a; font-size:13px; transition:all .25s; }
+  .glitch.hit { border:1px solid var(--warn); background:rgba(255,201,77,.14); color:var(--text); }
+  .glitch b { color:var(--warn); }
+  .glitch code { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; background:#07090d; padding:1px 6px; border-radius:4px; }
+  .glitch .src { margin-top:6px; font-family:ui-monospace, Menlo, monospace; font-size:12.5px; background:#07090d;
+                 border-radius:6px; padding:6px 8px; color:#c8cedb; }
+  .glitch .src s { color:var(--bad); text-decoration-thickness:2px; }
+  .verdict { margin:10px 0 0; padding:10px 14px; border-radius:10px; font-weight:600; display:none; }
+  .verdict.ok { display:block; background:rgba(79,209,139,.12); border:1px solid rgba(79,209,139,.5); color:var(--ok); }
+  .verdict.bad { display:block; background:rgba(255,93,93,.12); border:1px solid rgba(255,93,93,.6); color:var(--bad); }
+  .verdict.warn { display:block; background:rgba(255,201,77,.12); border:1px solid rgba(255,201,77,.6); color:var(--warn); }
+  .verdict small { display:block; font-weight:400; color:var(--muted); margin-top:2px; font-size:12px; }
+  footer { border-top:1px solid var(--line); padding:8px 20px 12px; background:rgba(11,13,18,.9); }
+  .controls { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  button { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 12px;
+           font:inherit; font-size:13px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#06101f; border-color:var(--accent); font-weight:600; min-width:92px; }
+  button.on { border-color:var(--accent); color:var(--accent); }
+  .clock { font-family:ui-monospace, Menlo, monospace; font-size:15px; margin-left:6px; }
+  .clock small { color:var(--muted); font-size:12px; }
+  .note { color:var(--muted); font-size:12px; }
+  #chart { width:100%; height:150px; display:block; cursor:pointer; }
+  .hood-btn { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:5px 12px; font-size:13px; cursor:pointer; }
+  .hood-btn:hover { border-color:var(--accent); }
+  #hood { position:fixed; top:0; right:0; bottom:0; width:min(760px, 92vw); background:#0d1017; border-left:1px solid var(--line);
+          box-shadow:-20px 0 60px rgba(0,0,0,.5); transform:translateX(100%); transition:transform .25s ease; z-index:20; overflow:auto; padding:18px 22px 40px; }
+  #hood.on { transform:none; }
+  @media (prefers-reduced-motion: reduce) { #hood { transition:none; } }
+  #hood h2 { margin:20px 0 8px; }
+  #hood .x { position:sticky; top:0; float:right; }
+  #hood .lead { color:var(--muted); font-size:13px; margin:0 0 6px; }
+  .cmd { display:flex; gap:8px; align-items:center; background:#07090d; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .cmd code { flex:1; font:13px ui-monospace, Menlo, monospace; color:#d7e0ee; word-break:break-all; }
+  .judge { width:100%; border-collapse:collapse; font-size:13px; }
+  .judge td { padding:6px 8px; border-bottom:1px solid #1d2230; vertical-align:top; }
+  .judge td.r { font-weight:700; white-space:nowrap; }
+  .judge .good { color:var(--ok); } .judge .bad { color:var(--bad); } .judge .warn { color:var(--warn); }
+  details { background:#07090d; border:1px solid var(--line); border-radius:8px; margin:6px 0; }
+  details summary { cursor:pointer; padding:7px 10px; font:13px ui-monospace, Menlo, monospace; color:#c8cedb; }
+  details summary small { color:var(--muted); font-family:-apple-system, sans-serif; margin-left:8px; }
+  details pre { margin:0; padding:8px 12px 12px; font:12px/1.5 ui-monospace, Menlo, monospace; color:#b9c1cf; white-space:pre-wrap; word-break:break-all; max-height:420px; overflow:auto; }
+  @media (max-width: 1250px) {
+    main { grid-template-columns:minmax(0, 1fr) 310px; }
+    aside { padding:12px 14px; }
+    .title { font-size:17px; }
+    button { padding:5px 9px; }
+    .controls { flex-wrap:nowrap; gap:6px; }
+    #foot { display:none; }
+    #chart { height:120px; }
+  }
+  .tip { color:var(--muted); font-size:12px; margin-top:4px; }
+
+  /* ---- classic desktop theme: colours, fonts, borders and corners only ---- */
+  :root { --bg:#c0c0c0; --panel:#c0c0c0; --panel2:#c0c0c0; --line:#808080; --text:#000; --muted:#404040;
+          --accent:#000080; --ok:#007a00; --bad:#b00000; --warn:#7a5a00; }
+  body { background:#c0c0c0 !important; color:#000 !important; font-family:Tahoma, Verdana, "MS Sans Serif", Geneva, sans-serif !important; }
+  code, pre, .mono, .clock, .steps .t, .rule, .console, .cmd code { font-family:"Courier New", Courier, monospace !important; }
+  header { background:#000080 !important; border-bottom:2px solid #000 !important; }
+  header .logo, header .logo span, header .crumb, header .crumb b, a.link { color:#fff !important; }
+  header .crumb b[style] { color:#ffff80 !important; }
+  .pill { border-radius:0 !important; background:#c0c0c0 !important; color:#000 !important; border:0 !important;
+          box-shadow:inset -1px -1px #fff, inset 1px 1px #808080 !important; }
+  .pill.ok { background:#008000 !important; color:#fff !important; } .pill.bad { background:#b00000 !important; color:#fff !important; }
+  .pill.warn { background:#c0a000 !important; color:#000 !important; }
+  button, .hood-btn, button.primary, button.on { background:#c0c0c0 !important; color:#000 !important; border:0 !important; border-radius:0 !important;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  button.on, button:active { box-shadow:inset -1px -1px #fff, inset 1px 1px #000, inset -2px -2px #dfdfdf, inset 2px 2px #808080 !important; background:#d4d0c8 !important; }
+  aside { background:#c0c0c0 !important; border-left:2px groove #fff !important; }
+  aside h2 { color:#000 !important; }
+  .title { color:#000; } .desc { color:#202020 !important; }
+  .steps { border-left-color:#808080 !important; } .steps li { color:#606060 !important; } .steps li.past { color:#000 !important; }
+  .steps li::before { border-radius:0 !important; background:#fff !important; border-color:#808080 !important; }
+  .steps li.past::before { background:#000080 !important; border-color:#000080 !important; }
+  .steps li.now::before { box-shadow:0 0 0 3px #ffff00 !important; }
+  .steps .t { color:#000080 !important; }
+  .rule { background:#fff !important; border:0 !important; border-radius:0 !important; color:#000; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .rule .state { color:#404040 !important; } .rule.ok .state { color:#007a00 !important; } .rule.bad .state { color:#b00000 !important; }
+  .rule.ok { background:#e8ffe8 !important; } .rule.bad { background:#ffe8e8 !important; }
+  .console { background:#000 !important; border:0 !important; border-radius:0 !important; color:#c0c0c0; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .console .t { color:#808080 !important; } .console .final { color:#00ff00 !important; }
+  .console .alarm { color:#ff5050 !important; } .console .warning { color:#ffff00 !important; }
+  .verdict { border-radius:0 !important; font-weight:700; }
+  .verdict.ok { background:#e8ffe8 !important; border:2px solid #007a00 !important; color:#005a00 !important; }
+  .verdict.bad { background:#ffe8e8 !important; border:2px solid #b00000 !important; color:#900000 !important; }
+  .verdict.warn { background:#fff8d0 !important; border:2px solid #7a5a00 !important; color:#5a4000 !important; }
+  .verdict small { color:#202020 !important; } .verdict a { color:#000080 !important; }
+  .glitch { border-radius:0 !important; background:#fff8d0 !important; border:2px solid #7a5a00 !important; color:#202020 !important; }
+  .glitch b { color:#5a4000 !important; } .glitch.hit { background:#ffef80 !important; }
+  .glitch .src { background:#fff !important; color:#000 !important; border-radius:0 !important; }
+  .glitch .src s { color:#b00000 !important; } .glitch a { color:#000080 !important; }
+  .glitch code { background:#fff !important; color:#000 !important; border-radius:0 !important; }
+  footer { background:#c0c0c0 !important; border-top:2px groove #fff !important; }
+  .clock { color:#000 !important; } .clock small, .note, .tip { color:#404040 !important; }
+  #chart { box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  #hood { background:#c0c0c0 !important; border-left:2px solid #000 !important; box-shadow:-4px 0 0 #808080 !important; }
+  #hood h2 { color:#000 !important; } #hood .lead { color:#202020 !important; }
+  .cmd { background:#fff !important; border-radius:0 !important; border:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .cmd code { color:#000 !important; }
+  .judge td { border-bottom:1px solid #808080 !important; color:#000; }
+  .judge .good { color:#007a00 !important; } .judge .bad { color:#b00000 !important; } .judge .warn { color:#7a5a00 !important; }
+  details { background:#fff !important; border-radius:0 !important; border:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  details summary { color:#000 !important; } details summary small { color:#404040 !important; }
+  details pre { color:#000 !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Virtu<span>Lab</span></div>
+  <div class="crumb" id="crumb"></div>
+  <div class="spacer"></div>
+  <button class="hood-btn" id="hood-open" title="Every command, file and judgement behind this run">Under the hood</button>
+  <span class="pill" id="pill">ready</span>
+  <a class="link" href="index.html">Register trace</a>
+</header>
+<main>
+  <div id="stage"><svg id="board" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <aside id="side"></aside>
+</main>
+<div id="hood"><button class="hood-btn x" id="hood-close">Close</button><div id="hood-body"></div></div>
+<footer>
+  <div class="controls">
+    <button class="primary" id="play">Play</button>
+    <button id="restart">Restart</button>
+    <span class="note">Speed</span>
+    <span id="speeds"></span>
+    <span class="clock" id="clock"></span>
+    <span class="spacer"></span>
+    <span class="note" id="foot"></span>
+  </div>
+  <svg id="chart" viewBox="0 0 1000 150" preserveAspectRatio="none"></svg>
+  <div class="tip">Click the chart to jump to a moment. Space plays and pauses.</div>
+</footer>
+<script>/*BOARD_ART*/</script>
+<script>
+const DATA = /*TRACE_DATA*/null;
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+/* ---------- what the run contains ---------- */
+const scenario = DATA.scenario || null;
+const duration = Math.max(1, DATA.duration_ms || 1);
+const events = DATA.events || [];
+const bus = events.filter(e => e.kind === "bus");
+const modules = DATA.modules || [];
+
+// The firmware's console: characters written to the UART data register, grouped into lines.
+const lines = [];
+{
+  let text = "", start = null;
+  for (const e of events) {
+    if (!(e.kind === "access" && e.console && e.op === "write" && e.register === "DR")) continue;
+    const ch = String.fromCharCode(e.value & 0xff);
+    if (start === null) start = e.t;
+    if (ch === "\n") { if (text.trim() && !text.startsWith("VIRTULAB_EXIT")) lines.push({ t: e.t, text }); text = ""; start = null; }
+    else if (ch !== "\r") text += ch;
+  }
+  if (text.trim() && !text.startsWith("VIRTULAB_EXIT")) lines.push({ t: duration, text });
+  if (!lines.length && DATA.output) DATA.output.split("\n").filter(l => l && !l.startsWith("VIRTULAB_EXIT")).forEach(text => lines.push({ t: duration, text }));
+}
+
+/* ---------- decoding what each sensor answered ---------- */
+const int16 = (hi, lo) => { const v = (hi << 8) | lo; return v & 0x8000 ? v - 0x10000 : v; };
+function crc8(a, b) {
+  let crc = 0xff;
+  for (const byte of [a, b]) { crc ^= byte; for (let i = 0; i < 8; i++) crc = crc & 0x80 ? ((crc << 1) ^ 0x31) & 0xff : (crc << 1) & 0xff; }
+  return crc;
+}
+const DECODERS = {
+  mpu6050: { color: "#6b3fa0", chip: "MPU-6050", kind: "6-axis motion sensor",
+    state: { range: 0 },
+    step(st, m) {
+      if (m.write.length >= 2 && m.write[0] === 0x1c) st.range = (m.write[1] >> 3) & 3;
+      if (m.write.length === 1 && m.write[0] === 0x3b && m.read.length >= 6) {
+        const per = 16384 >> st.range, r = m.read;
+        const a = [int16(r[0], r[1]) / per, int16(r[2], r[3]) / per, int16(r[4], r[5]) / per];
+        const g = Math.hypot(...a);
+        return { rows: [["X", a[0].toFixed(2) + " g"], ["Y", a[1].toFixed(2) + " g"], ["Z", a[2].toFixed(2) + " g"]],
+                 big: g.toFixed(2) + " g", bigLabel: "|acceleration|", series: { label: "acceleration", unit: "g", value: g } };
+      }
+      return null;
+    } },
+  sht31: { color: "#1f5fa8", chip: "SHT31", kind: "temperature & humidity",
+    state: {},
+    step(st, m) {
+      if (m.write.length === 0 && m.read.length >= 6) {
+        const r = m.read, okT = crc8(r[0], r[1]) === r[2], okH = crc8(r[3], r[4]) === r[5];
+        const t = -45 + 175 * ((r[0] << 8) | r[1]) / 65535, h = 100 * ((r[3] << 8) | r[4]) / 65535;
+        const ok = okT && okH;
+        return { rows: ok ? [["RH", h.toFixed(1) + " %"], ["checksum", "ok"]] : [["checksum", "wrong"]],
+                 bad: !ok, big: t.toFixed(1) + " °C",
+                 bigLabel: ok ? "skin temperature" : "garbled on the wire: must not be trusted",
+                 series: { label: "temperature", unit: "°C", value: t, bad: !ok } };
+      }
+      return null;
+    } },
+};
+function decoderFor(model) {
+  const key = (model || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const k of Object.keys(DECODERS)) if (key.includes(k)) return DECODERS[k];
+  return null;
+}
+
+// Per module: every decoded reading, in time order.
+const readings = {};
+for (const mod of modules) readings[mod.name] = [];
+{
+  const states = {};
+  for (const m of bus) {
+    const mod = modules.find(x => x.name === m.device);
+    if (!mod) continue;
+    const dec = decoderFor(mod.model);
+    if (!dec) { readings[mod.name].push({ t: m.t, raw: m }); continue; }
+    const st = states[mod.name] || (states[mod.name] = Object.assign({}, dec.state));
+    const out = dec.step(st, m);
+    if (out) readings[mod.name].push(Object.assign({ t: m.t }, out));
+  }
+}
+
+/* ---------- the board, drawn by boardart.js ---------- */
+const { paths, cards, mcuGlow, leds, pulseLayer } = VirtuBoard.draw($("board"), { board: DATA.board || {}, modules,
+  emptyText: "No sensors on a bus in this project" });
+
+/* ---------- the glitch, on the chip ---------- */
+let zap = null;
+if (DATA.glitch && DATA.glitch.applied) {
+  const svgB = $("board"), g = document.createElementNS(NS, "g");
+  g.setAttribute("opacity", 0); svgB.appendChild(g);
+  const add = (tag, a, text) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]);
+    if (text) e.textContent = text; g.appendChild(e); return e; };
+  const flash = add("rect", { x: 220, y: 220, width: 166, height: 166, rx: 10, fill: "#ffc94d", opacity: .0 });
+  add("rect", { x: 150, y: 392, width: 306, height: 46, rx: 8, fill: "#1a1405", stroke: "#ffc94d", "stroke-width": 1.5 });
+  add("text", { x: 164, y: 411, fill: "#ffc94d", "font-size": 13, "font-weight": 700 }, "skipped " + DATA.glitch.instruction);
+  add("text", { x: 164, y: 428, fill: "#e8d9a8", "font-size": 11, "font-family": "ui-monospace, Menlo, monospace" },
+      (DATA.glitch.file ? DATA.glitch.file + ":" + DATA.glitch.line + "  " : "") + (DATA.glitch.code || DATA.glitch.where));
+  zap = { g, flash, shown: false, at: 0 };
+}
+function showFault() {
+  if (!DATA.fault) return;
+  const on = now >= DATA.fault.at && now < DATA.fault.until, c = cards[DATA.fault.module];
+  if (c) { c.halo.setAttribute("stroke", on ? "#ffc94d" : "#fff"); c.halo.setAttribute("stroke-width", on ? 4 : 2);
+           if (on) c.halo.setAttribute("opacity", 1); else if (!c.flash) c.halo.setAttribute("opacity", 0);
+           if (c.bigLabel && on) { c.bigLabel.textContent = DATA.fault.kind.toUpperCase() + " (injected fault)"; c.bigLabel.setAttribute("fill", "#ffc94d"); } }
+  const card = $("faultcard"); if (card) card.classList.toggle("hit", on);
+}
+function showZap() {
+  if (!zap) return;
+  const on = now >= DATA.glitch.t;
+  zap.g.setAttribute("opacity", on ? 1 : 0);
+  if (on && !zap.shown) zap.at = performance.now();
+  zap.shown = on;
+  const k = (performance.now() - zap.at) / 700;
+  zap.flash.setAttribute("opacity", on && k < 1 ? .55 * (1 - k) : 0);
+  const card = $("glitch"); if (card) card.classList.toggle("hit", on);
+}
+
+/* ---------- side panel ---------- */
+const UNITS = { Acceleration: "g", AngularRate: "°/s", Temperature: "°C", Humidity: "%RH" };
+function inputText(i) {
+  const [mod, prop] = i.target.split(".");
+  if (prop === "CorruptCrc") return i.value ? `${mod} sensor cable damaged: answers arrive garbled (wrong checksum)` : `${mod} sensor cable intact`;
+  if (/^Corrupt|^Fail|^Disconnect/i.test(prop)) return `${mod}: ${prop.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} ${i.value ? "on" : "off"}`;
+  const unit = Object.entries(UNITS).find(([k]) => prop.startsWith(k));
+  const nice = prop.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return `${mod} ${nice} = ${i.value}${unit ? " " + unit[1] : ""}`;
+}
+const side = $("side");
+const name = scenario ? scenario.name.replace(/_/g, " ") : "Unit tests";
+$("crumb").innerHTML = `${esc((DATA.board && DATA.board.description) || "")} · scenario <b>${esc(name)}</b>` +
+  (DATA.fault ? ` · <b style="color:var(--warn)">fault: ${esc(DATA.fault.label)}</b>` : "") +
+  (DATA.glitch && DATA.glitch.applied ? ` · <b style="color:var(--warn)">one instruction skipped</b>` : "");
+let html = `<h2>Scenario</h2><p class="title">${esc(name)}</p>`;
+if (scenario && scenario.description) html += `<p class="desc">${esc(scenario.description)}</p>`;
+const glitch = DATA.glitch || null;
+const fault = DATA.fault || null;
+if (fault) html += `<div class="glitch" id="faultcard"><b>One faulty peripheral</b>
+  From <b>${fault.at} ms</b> to <b>${fault.until} ms</b>, <code>${esc(fault.module)}${fault.input ? "." + esc(fault.input) : ""}</code>
+  is <b>${esc(fault.kind)}</b>: it ${esc(fault.what)}.</div>`;
+if (glitch) html += `<div class="glitch" id="glitch"><b>One instruction removed</b>
+  ${glitch.applied ? `At <b>${glitch.t} ms</b>, just after the impact, the processor skips one instruction, as a voltage glitch would:`
+                   : `The instruction below was never reached after ${glitch.after_ms} ms, so nothing was skipped.`}
+  <div class="src">${esc(glitch.where)} &nbsp; <s>${esc(glitch.instruction)}</s>
+  ${glitch.file ? `<br><a href="#" id="glitch-src" style="color:var(--accent)">${esc(glitch.file)}:${glitch.line}</a> &nbsp; <s>${esc(glitch.code || "")}</s>` : ""}</div></div>`;
+html += `<div class="verdict" id="verdict"></div>`;
+html += `<h2>Firmware output</h2><div class="console" id="console"><div class="empty">nothing printed yet</div></div>`;
+let stepTimes = [];
+if (scenario && scenario.inputs && scenario.inputs.length) {
+  const byTime = {};
+  for (const i of scenario.inputs) (byTime[i.t] = byTime[i.t] || []).push(inputText(i));
+  stepTimes = Object.keys(byTime).map(Number).sort((a, b) => a - b);
+  html += `<h2>What happens around the board</h2><ul class="steps">` +
+    stepTimes.map((t, k) => `<li id="step${k}"><span class="t">${t} ms</span>${byTime[t].map(esc).join("<br>")}</li>`).join("") + `</ul>`;
+}
+if (scenario && scenario.rules && scenario.rules.length) {
+  html += `<h2>How the world reacts</h2>` + scenario.rules.map(r =>
+    `<div class="rule">when ${esc(r.when)} is ${r.high ? "high" : "low"}${r.for_ms ? " for " + r.for_ms + " ms" : ""}, set ${esc(r.set)} to ${r.to}</div>`).join("");
+}
+if (scenario) {
+  html += `<h2>The firmware must report</h2>` + scenario.expect.map((x, k) => `<div class="rule" id="exp${k}">${esc(x)}<span class="state">waiting</span></div>`).join("");
+  if (scenario.forbid.length)
+    html += `<h2>…and must never report</h2>` + scenario.forbid.map((x, k) => `<div class="rule" id="forb${k}">${esc(x)}<span class="state">watching</span></div>`).join("");
+}
+side.innerHTML = html;
+if ($("glitch-src")) $("glitch-src").onclick = e => { e.preventDefault();
+  if (window.parent !== window) parent.postMessage({ type: "open", file: glitch.file, line: glitch.line }, location.origin); };
+$("foot").textContent = `Replay of a recorded run${DATA.fault ? ", with one faulty peripheral" : DATA.glitch ? ", with one instruction skipped" : scenario && scenario.faults && scenario.faults.length ? ", without glitches" : ""} · ${bus.length} bus messages · ${duration} ms of virtual time`;
+
+/* ---------- the chart ---------- */
+const chart = $("chart");
+const series = [];
+for (const mod of modules) {
+  const pts = readings[mod.name].filter(r => r.series);
+  if (pts.length) series.push({ name: mod.name, label: pts[0].series.label, unit: pts[0].series.unit,
+                                color: decoderFor(mod.model) ? (mod.model.includes("sht") ? "#ff8f6b" : "#b48cff") : "#5aa9ff", pts });
+}
+const X = t => 40 + (t / duration) * 940;
+function drawChart() {
+  chart.innerHTML = "";
+  el("rect", { x: 0, y: 0, width: 1000, height: 150, fill: "#0e1118" }, chart);
+  for (let k = 0; k <= 10; k++) {
+    const t = duration * k / 10;
+    el("line", { x1: X(t), y1: 8, x2: X(t), y2: 132, stroke: "#1d2230" }, chart);
+    el("text", { x: X(t), y: 146, "text-anchor": "middle", fill: "#56607a", "font-size": 10 }, chart, Math.round(t) + " ms");
+  }
+  const lanes = Math.max(1, series.length), laneH = 118 / lanes;
+  series.forEach((s, k) => {
+    const top = 10 + k * laneH, vals = s.pts.map(p => p.series.value);
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
+    const pad = (hi - lo) * .15; lo -= pad; hi += pad;
+    const Y = v => top + laneH - 6 - ((v - lo) / (hi - lo)) * (laneH - 14);
+    let d = "";
+    // each reading holds until the next one: that is what the firmware saw
+    s.pts.forEach((p, i) => { d += (i ? " H" + X(p.t).toFixed(1) + " V" : "M" + X(p.t).toFixed(1) + " ") + Y(p.series.value).toFixed(1); });
+    d += " L" + X(duration).toFixed(1) + " " + Y(s.pts[s.pts.length - 1].series.value).toFixed(1);
+    el("path", { d, stroke: s.color, "stroke-width": 2, fill: "none", "vector-effect": "non-scaling-stroke" }, chart);
+    s.pts.filter(p => p.series.bad).forEach(p => el("circle", { cx: X(p.t), cy: Y(p.series.value), r: 3.5, fill: "#ff5d5d" }, chart));
+    el("text", { x: 44, y: top + 12, fill: s.color, "font-size": 11, "font-weight": 600 }, chart,
+       `${s.name} ${s.label} (${s.unit})${s.pts.some(p => p.series.bad) ? "  ·  red dot = garbled reading" : ""}`);
+    el("text", { x: 36, y: Y(hi - pad) + 4, "text-anchor": "end", fill: "#56607a", "font-size": 9 }, chart, (hi - pad).toFixed(1));
+    el("text", { x: 36, y: Y(lo + pad) + 4, "text-anchor": "end", fill: "#56607a", "font-size": 9 }, chart, (lo + pad).toFixed(1));
+  });
+  stepTimes.forEach(t => el("path", { d: `M${X(t)} 2 l-4 -0 l4 7 l4 -7 z`, fill: "#5aa9ff" }, chart));
+  (DATA.glitch || DATA.fault ? [] : scenario && scenario.faults || []).filter(t => t > 0).forEach((t, k) => {
+    el("line", { x1: X(t), y1: 8, x2: X(t), y2: 132, stroke: "#ffc94d", "stroke-dasharray": "3 3", opacity: .7 }, chart);
+    if (k === 0) el("text", { x: X(t) - 4, y: 18, "text-anchor": "end", fill: "#ffc94d", "font-size": 9, opacity: .9 }, chart, "glitch sweeps start here");
+  });
+  if (DATA.fault) {
+    el("rect", { x: X(DATA.fault.at), y: 8, width: Math.max(2, X(DATA.fault.until) - X(DATA.fault.at)), height: 124,
+                 fill: "#ffc94d", opacity: .12 }, chart);
+    el("text", { x: X(DATA.fault.at) + 5, y: 30, fill: "#ffc94d", "font-size": 11, "font-weight": 700 }, chart,
+       DATA.fault.module + " " + DATA.fault.kind);
+  }
+  if (DATA.glitch && DATA.glitch.t != null) {
+    el("line", { x1: X(DATA.glitch.t), y1: 8, x2: X(DATA.glitch.t), y2: 132, stroke: "#ffc94d", "stroke-width": 2.5 }, chart);
+    el("text", { x: X(DATA.glitch.t) + 5, y: 30, fill: "#ffc94d", "font-size": 11, "font-weight": 700 }, chart, "instruction skipped");
+  }
+  lines.filter(l => /ALARM|WARNING/.test(l.text)).forEach(l => {
+    const c = /ALARM/.test(l.text) ? "#ff5d5d" : "#ffc94d";
+    el("line", { x1: X(l.t), y1: 8, x2: X(l.t), y2: 132, stroke: c, "stroke-width": 2 }, chart);
+  });
+  playhead = el("line", { x1: X(0), y1: 4, x2: X(0), y2: 134, stroke: "#fff", "stroke-width": 1.5 }, chart);
+}
+let playhead;
+drawChart();
+
+/* ---------- playback ---------- */
+let now = 0, playing = false, speed = 0.25, last = null, cursor = 0, lineCursor = 0;
+const pulses = [];
+const SPEEDS = [0.1, 0.25, 0.5, 1];
+$("speeds").innerHTML = SPEEDS.map(s => `<button data-s="${s}" class="${s === speed ? "on" : ""}">${s}×</button>`).join(" ");
+$("speeds").onclick = e => { const s = e.target.dataset.s; if (!s) return; speed = +s;
+  [...$("speeds").children].forEach(b => b.classList.toggle("on", +b.dataset.s === speed)); };
+
+function latest(mod, t) {
+  const list = readings[mod]; let lo = 0, hi = list.length - 1, best = null;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (list[mid].t <= t) { best = list[mid]; lo = mid + 1; } else hi = mid - 1; }
+  return best;
+}
+function setLed(k, on) { const l = leds[k]; if (l.on === on) return; l.on = on;
+  l.lens.setAttribute("opacity", on ? 1 : .18); l.halo.setAttribute("opacity", on ? .55 : 0); }
+
+function render(fresh) {
+  $("clock").innerHTML = `${(now / 1000).toFixed(3)} s <small>of ${(duration / 1000).toFixed(2)} s virtual time</small>`;
+  playhead.setAttribute("x1", X(now)); playhead.setAttribute("x2", X(now));
+  // sensor readouts
+  for (const mod of modules) {
+    const c = cards[mod.name], r = latest(mod.name, now);
+    if (!c.big) continue;
+    if (!r) { c.big.textContent = "—"; c.bigLabel.textContent = "waiting for the first reading"; c.rows.forEach(x => x.textContent = ""); continue; }
+    if (r.raw) { c.big.textContent = (r.raw.read.length ? r.raw.read : r.raw.write).slice(0, 4).map(b => b.toString(16).padStart(2, "0")).join(" ");
+      c.bigLabel.textContent = "last bytes on the bus"; continue; }
+    c.big.textContent = r.big; c.big.setAttribute("fill", r.bad ? "#ff5d5d" : "#fff");
+    c.big.setAttribute("text-decoration", r.bad ? "line-through" : "none");
+    c.bigLabel.setAttribute("fill", r.bad ? "#ff8a8a" : "#8b94a7");
+    c.bigLabel.textContent = r.bigLabel;
+    c.rows.forEach((x, i) => { const row = r.rows[i]; x.textContent = row ? `${row[0]}  ${row[1]}` : "";
+      x.setAttribute("fill", r.bad ? "#ff5d5d" : "#c8cedb"); });
+  }
+  // scenario steps
+  stepTimes.forEach((t, k) => { const li = $("step" + k); if (!li) return;
+    li.classList.toggle("past", t <= now); li.classList.toggle("now", t <= now && (k === stepTimes.length - 1 || stepTimes[k + 1] > now)); });
+  // console and LEDs
+  if (fresh) { $("console").innerHTML = ""; lineCursor = 0; }
+  while (lineCursor < lines.length && lines[lineCursor].t <= now) {
+    const l = lines[lineCursor++], cls = /ALARM/.test(l.text) ? "alarm" : /WARNING/.test(l.text) ? "warning" : /=/.test(l.text) ? "final" : "";
+    $("console").insertAdjacentHTML("beforeend", `<div class="${cls}"><span class="t">${String(l.t).padStart(5)} ms</span>${esc(l.text)}</div>`);
+  }
+  if (!$("console").children.length) $("console").innerHTML = `<div class="empty">nothing printed yet</div>`;
+  const shown = lines.slice(0, lineCursor).map(l => l.text).join("\n");
+  setLed("alarm", /ALARM/.test(shown)); setLed("warn", /WARNING/.test(shown));
+  setLed("act", pulses.length > 0);
+  // expectations
+  const done = now >= duration;
+  if (scenario) {
+    scenario.expect.forEach((x, k) => { const r = $("exp" + k), seen = shown.includes(x);
+      r.className = "rule" + (seen ? " ok" : done ? " bad" : ""); r.querySelector(".state").textContent = seen ? "reported" : done ? "never reported" : "waiting"; });
+    scenario.forbid.forEach((x, k) => { const r = $("forb" + k), seen = shown.split("\n").some(l => l.includes(x));
+      r.className = "rule" + (seen ? " bad" : done ? " ok" : ""); r.querySelector(".state").textContent = seen ? "reported" : done ? "never reported" : "watching"; });
+  }
+  const v = $("verdict"), pill = $("pill");
+  if (done && scenario) {
+    const map = { held: ["ok", "The firmware did what it must", "Every required report appeared, nothing forbidden did."],
+                  broken: ["bad", "The firmware broke the rule", "A forbidden report appeared, or a required one is missing."],
+                  no_result: ["warn", "No result", "The firmware crashed or hung before it reported."] }[scenario.verdict] || ["warn", scenario.verdict, ""];
+    const bad = scenario.forbid.find(x => shown.split("\n").some(l => l.includes(x)));
+    const why = bad ? `It reported ${esc(bad)}, which must never happen.` : map[2];
+    const html = `${map[1]}<small>${why} <a href="#" id="whylink" style="color:var(--accent)">Why?</a></small>`;
+    if (v.dataset.html !== html) {   // render runs every frame: rebuild only on change, so the link stays clickable
+      v.className = "verdict " + map[0]; v.innerHTML = html; v.dataset.html = html;
+      $("whylink").onclick = e => { e.preventDefault(); $("hood").classList.add("on"); };
+    }
+    pill.className = "pill " + map[0]; pill.textContent = scenario.verdict === "held" ? "held" : scenario.verdict.replace("_", " ");
+  } else { v.className = "verdict"; v.dataset.html = ""; pill.className = "pill"; pill.textContent = playing ? "running" : now ? "paused" : "ready"; }
+}
+
+function emit(m) {
+  const p = paths[m.device]; if (!p) return;
+  const read = m.read && m.read.length > 0;
+  const dot = el("circle", { r: 7, fill: read ? "#4fd18b" : "#ffaa4d", filter: "url(#vb-glow)" }, pulseLayer);
+  pulses.push({ dot, p, read, born: performance.now() });
+  const c = cards[m.device]; if (c) { c.halo.setAttribute("opacity", .9); c.flash = performance.now(); }
+  mcuGlow.setAttribute("opacity", .8); mcuGlow.flash = performance.now();
+}
+function animate(ts) {
+  if (playing) {
+    if (last !== null) now = Math.min(duration, now + (ts - last) * speed);
+    last = ts;
+    // limit the pulses so a dense stretch stays readable
+    let budget = 3;
+    while (cursor < bus.length && bus[cursor].t <= now) { if (budget-- > 0) emit(bus[cursor]); cursor++; }
+    if (now >= duration) { playing = false; $("play").textContent = "Play"; }
+  } else last = null;
+  const life = 420;
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const q = pulses[i], k = (performance.now() - q.born) / life;
+    if (k >= 1) { q.dot.remove(); pulses.splice(i, 1); continue; }
+    const pos = q.p.el.getPointAtLength((q.read ? 1 - k : k) * q.p.len);
+    q.dot.setAttribute("cx", pos.x); q.dot.setAttribute("cy", pos.y); q.dot.setAttribute("opacity", 1 - k * .3);
+  }
+  for (const c of Object.values(cards)) if (c.flash && performance.now() - c.flash > 160) { c.halo.setAttribute("opacity", 0); c.flash = 0; }
+  if (mcuGlow.flash && performance.now() - mcuGlow.flash > 160) { mcuGlow.setAttribute("opacity", 0); mcuGlow.flash = 0; }
+  render(false);
+  showZap();
+  showFault();
+  requestAnimationFrame(animate);
+}
+function seek(t) {
+  now = Math.max(0, Math.min(duration, t));
+  cursor = bus.findIndex(m => m.t > now); if (cursor < 0) cursor = bus.length;
+  render(true);
+}
+$("play").onclick = () => { if (now >= duration) seek(0); playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; };
+$("restart").onclick = () => { seek(0); playing = true; $("play").textContent = "Pause"; };
+chart.onclick = e => { const r = chart.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width * 1000 - 40) / 940 * duration); };
+document.addEventListener("keydown", e => { if (e.code === "Space") { e.preventDefault(); $("play").click(); } });
+/* ---------- under the hood ---------- */
+function judgement() {
+  if (!scenario) return "";
+  const out = (DATA.output || "").split("\n").filter(l => l && !l.startsWith("VIRTULAB_EXIT"));
+  const where = text => out.findIndex(l => l.includes(text));
+  const rows = [];
+  const faulty = !!(DATA.fault || DATA.glitch);
+  for (const x of scenario.expect) { const i = where(x);
+    const state = i >= 0 ? ["good", "met"] : faulty ? ["", "not judged under a fault"] : ["bad", "missing"];
+    rows.push(`<tr><td>must report <code>${esc(x)}</code></td><td>${i >= 0 ? `found on output line ${i + 1}: <code>${esc(out[i])}</code>` : "not found in the output"}</td>
+      <td class="r ${state[0]}" style="${state[0] ? "" : "color:var(--muted);font-weight:400"}">${state[1]}</td></tr>`); }
+  for (const x of scenario.forbid) { const i = where(x);
+    rows.push(`<tr><td>must never report <code>${esc(x)}</code></td><td>${i >= 0 ? `found on output line ${i + 1}: <code>${esc(out[i])}</code>` : "not found in the output"}</td>
+      <td class="r ${i >= 0 ? "bad" : "good"}">${i >= 0 ? "violated" : "respected"}</td></tr>`); }
+  const finished = DATA.exit_code === 0;
+  rows.push(`<tr><td>the firmware finished</td><td>${DATA.timed_out ? "no: it was still running when the time limit hit" : `exit code ${DATA.exit_code}`}</td>
+    <td class="r ${finished ? "good" : "warn"}">${finished ? "yes" : "no"}</td></tr>`);
+  const rule = DATA.fault || DATA.glitch
+    ? "With an injected fault, only a forbidden report counts as broken. A run with no answer is counted as crashed, apart, and never as safe."
+    : "Broken if a forbidden report appears, or if the firmware finishes without every required one. No answer at all is counted apart.";
+  return `<p class="lead">A rule matches when its text appears anywhere in what the firmware printed. ${rule}</p>
+    <table class="judge">${rows.join("")}</table>
+    <p class="lead" style="margin-top:8px">Verdict: <b>${esc((scenario.verdict || "").replace("_", " "))}</b></p>`;
+}
+function hood() {
+  const H = DATA.under_the_hood || {};
+  let h = `<h2 style="margin-top:0">Reproduce this run</h2>
+    <p class="lead">In the project folder. The same command gives the same result: time in the emulator is virtual, so runs are deterministic.</p>
+    <div class="cmd"><code id="cmdtext">${esc(DATA.command || "virtulab trace")}</code><button class="hood-btn" id="copy">Copy</button></div>`;
+  if (scenario) h += `<h2>Why the verdict is ${esc((scenario.verdict || "").replace("_", " "))}</h2>${judgement()}`;
+  if (DATA.fault) h += `<h2>The injected fault</h2><p class="lead">${esc(DATA.fault.label)} from ${DATA.fault.at} to ${DATA.fault.until} ms: it ${esc(DATA.fault.what)}. The scenario's own inputs are unchanged outside that window; the generated input timeline is in <code>models/Stimulus.cs</code> below.</p>`;
+  if (DATA.glitch) h += `<h2>The skipped instruction</h2><p class="lead">${esc(DATA.glitch.where)} <code>${esc(DATA.glitch.instruction)}</code> at address 0x${DATA.glitch.address.toString(16)}, armed at ${DATA.glitch.after_ms} ms, skipped ${DATA.glitch.applied ? "at " + DATA.glitch.t + " ms" : "never (not reached)"}. The add-on that skips it is <code>models/FaultArm.cs</code> below.</p>`;
+  h += `<h2>What the firmware printed</h2><details open><summary>uart.log<small>the firmware's console, as received</small></summary><pre>${esc(H.uart || DATA.output || "")}</pre></details>`;
+  if (H.commands) h += `<h2>How the firmware was built</h2><p class="lead">Firmware SHA-256 <code>${esc(H.elf_sha256 || "?")}</code>${H.sizes ? ` · flash ${H.sizes.flash} bytes · RAM ${H.sizes.ram} bytes` : ""}</p>
+    <details><summary>${H.commands.length} compiler and linker calls<small>exactly as run</small></summary><pre>${H.commands.map(esc).join("\n\n")}</pre></details>`;
+  const files = Object.entries(H.files || {});
+  if (files.length) {
+    const why = { "run.resc": "the Renode script VirtuLab wrote: board, models, firmware, start",
+                  "peripherals.repl": "the sensors and peripherals added to the board, at their addresses" };
+    h += `<h2>Files VirtuLab generated for this run</h2><p class="lead">Nothing else was used: the board comes from Renode, the sensor models from <code>&lt;virtulab&gt;/devices</code>, and these files from your <code>virtulab.yml</code>.</p>` +
+      files.map(([n, t]) => `<details><summary>${esc(n)}<small>${esc(why[n] || (n.startsWith("models/") ? "a model generated for this run" : ""))}</small></summary><pre>${esc(t)}</pre></details>`).join("");
+  }
+  $("hood-body").innerHTML = h;
+  $("copy").onclick = () => { const t = $("cmdtext").textContent;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => $("copy").textContent = "Copied",
+      () => { const r = document.createRange(); r.selectNodeContents($("cmdtext")); getSelection().removeAllRanges(); getSelection().addRange(r); }); };
+}
+hood();
+$("hood-open").onclick = () => $("hood").classList.add("on");
+$("hood-close").onclick = () => $("hood").classList.remove("on");
+
+// board.html#t=1500 opens at that moment, #t=end at the result, #play starts the replay, #hood opens the drawer.
+const hash = new URLSearchParams(location.hash.slice(1));
+seek(hash.get("t") === "end" ? duration : Number(hash.get("t")) || 0);
+if (hash.has("play")) $("play").click();
+if (hash.has("hood")) $("hood").classList.add("on");
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# The team keeps its CMake build. VirtuLab only needs the command and the images it produces.
+version: 1
+board: lm3s6965evb
+build:
+  command: "cmake -S . -B build/vl > /dev/null && cmake --build build/vl"
+  elf: build/vl/boot_tests.elf
+tests:
+  unit: {}
+  footprint: { flash_increase: 1K }
+  fault:
+    elf: [build/vl/boot_probe_tampered.elf]
+    target: src/boot.c
+    functions: [boot_verify]

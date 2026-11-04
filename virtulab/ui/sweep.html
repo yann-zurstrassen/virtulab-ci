@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VirtuLab glitch sweep</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#141821; --panel2:#1a1f2b; --line:#262c3a; --text:#e3e7ef; --muted:#8b94a7;
+          --accent:#5aa9ff; --ok:#4fd18b; --bad:#ff5d5d; --warn:#ffc94d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--text);
+         background:radial-gradient(1200px 700px at 30% 0%, #131826 0%, var(--bg) 60%) fixed; }
+  header { display:flex; align-items:center; gap:14px; padding:12px 22px; border-bottom:1px solid var(--line); }
+  .logo { font-weight:700; } .logo span { color:var(--accent); }
+  .crumb { color:var(--muted); } .crumb b { color:var(--text); }
+  .spacer { flex:1; }
+  .pill { padding:4px 12px; border-radius:999px; font-weight:600; font-size:13px; }
+  .pill.bad { background:var(--bad); color:#fff; } .pill.ok { background:var(--ok); color:#0b0d12; }
+  .wrap { max-width:1500px; margin:0 auto; padding:18px 22px 30px; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:0 0 10px; font-weight:600; }
+  .how { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:10px; }
+  .how div { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; position:relative; }
+  .how div > b { display:block; margin-bottom:3px; }
+  .how div span { color:#c0c7d4; font-size:13px; }
+  .how div i { position:absolute; top:10px; right:12px; font-style:normal; color:var(--accent); font-weight:700; }
+  .how code, td code, .note code { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; }
+  .numbers { color:var(--muted); margin:6px 0 18px; }
+  .numbers b { color:var(--text); }
+  .grid { display:grid; grid-template-columns:minmax(0, 0.85fr) minmax(0, 1.15fr); gap:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  pre { margin:0; font:12.5px/1.6 ui-monospace, Menlo, monospace; background:#07090d; border-radius:8px; padding:8px 0; overflow:auto; }
+  pre div { padding:0 12px; white-space:pre; border-left:3px solid transparent; }
+  pre div .n { color:#4b5468; display:inline-block; width:34px; }
+  pre div.fatal { background:rgba(255,93,93,.14); border-left-color:var(--bad); }
+  pre div.fatal::after { content:"  a single glitch here loses the alarm"; color:var(--bad); font-family:-apple-system, sans-serif; font-size:12px; }
+  pre div.hover { background:rgba(90,169,255,.18); border-left-color:var(--accent); }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th { text-align:left; color:var(--muted); font-weight:600; padding:6px 8px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--panel); }
+  td { padding:4px 8px; border-bottom:1px solid #1d2230; white-space:nowrap; }
+  tr:hover td { background:#1b2232; }
+  tr.fatal td { background:rgba(255,93,93,.10); }
+  td.addr { color:#6b7590; font-family:ui-monospace, Menlo, monospace; }
+  td.where { color:var(--muted); font-family:ui-monospace, Menlo, monospace; }
+  td.c { color:#9fb6d9; font-family:ui-monospace, Menlo, monospace; max-width:190px; overflow:hidden; text-overflow:ellipsis; }
+  th.t, td.t { text-align:center; }
+  .cell { display:inline-grid; place-items:center; width:30px; height:22px; border-radius:6px; font-weight:700; font-size:13px; }
+  .held { background:rgba(79,209,139,.15); color:var(--ok); }
+  .broken { background:var(--bad); color:#fff; box-shadow:0 0 12px rgba(255,93,93,.6); }
+  .crashed { background:rgba(255,201,77,.15); color:var(--warn); }
+  .not_reached { color:#3f475a; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; color:var(--muted); font-size:12.5px; margin:10px 0 0; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .note { margin-top:12px; color:var(--muted); font-size:12.5px; }
+  .found { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin:0 0 16px; }
+  .found.bad { border-color:rgba(255,93,93,.55); background:rgba(255,93,93,.06); }
+  .found.ok { border-color:rgba(79,209,139,.5); background:rgba(79,209,139,.06); color:var(--ok); font-weight:600; }
+  .found .hit { display:flex; align-items:center; gap:12px; padding:5px 0; flex-wrap:wrap; }
+  .found .hit .x { color:var(--bad); font-weight:800; }
+  .found .hit code { font-family:ui-monospace, Menlo, monospace; font-size:13px; }
+  .found .hit .c { color:#9fb6d9; }
+  .found .hit .when { color:var(--muted); font-size:12.5px; }
+  .found button { margin-left:auto; background:var(--accent); color:#06101f; border:0; border-radius:8px; font:inherit; font-weight:700;
+                  padding:5px 12px; cursor:pointer; }
+  .scroll { max-height:calc(100vh - 330px); overflow:auto; border-radius:8px; }
+  /* narrower windows, such as inside the studio: drop the C line column (hovering shows the line) */
+  @media (max-width: 1300px) {
+    .wrap { padding:14px 16px 24px; }
+    .grid { grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; }
+    th.cl, td.c { display:none; }
+    .how div span { font-size:12px; }
+    pre div.fatal::after { content:"  one glitch here loses the alarm"; }
+  }
+  .repro { display:flex; gap:10px; align-items:center; background:#07090d; border:1px solid var(--line); border-radius:8px;
+           padding:7px 10px; margin:0 0 14px; font-size:12.5px; color:var(--muted); }
+  .repro code { flex:1; color:#d7e0ee; font:12.5px ui-monospace, Menlo, monospace; word-break:break-all; }
+  .repro button, .copy { background:#1a1f2b; color:#e3e7ef; border:1px solid #262c3a; border-radius:6px; font:inherit; font-size:12px; padding:3px 9px; cursor:pointer; }
+  .hitcmd { width:100%; font:11.5px ui-monospace, Menlo, monospace; color:#8b94a7; margin:-2px 0 4px 26px; }
+
+  /* ---- classic desktop theme: colours, fonts, borders and corners only ---- */
+  :root { --bg:#c0c0c0; --panel:#c0c0c0; --panel2:#c0c0c0; --line:#808080; --text:#000; --muted:#404040;
+          --accent:#000080; --ok:#007a00; --bad:#b00000; --warn:#7a5a00; }
+  body { background:#c0c0c0 !important; color:#000 !important; font-family:Tahoma, Verdana, "MS Sans Serif", Geneva, sans-serif !important; }
+  code, pre, .repro code, .hitcmd, td.f, td.where, td.c, td.addr { font-family:"Courier New", Courier, monospace !important; }
+  header { background:#000080 !important; border-bottom:2px solid #000 !important; }
+  header .logo, header .logo span, header .crumb, header .crumb b { color:#fff !important; }
+  h2 { color:#000 !important; }
+  .pill { border-radius:0 !important; }
+  .pill.bad { background:#b00000 !important; color:#fff !important; } .pill.ok { background:#008000 !important; color:#fff !important; }
+  .how div, .card, .vocab span, .found, .fact { background:#c0c0c0 !important; border:0 !important; border-radius:0 !important;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; color:#000 !important; }
+  .how div span, .card .desc, .note, .numbers, .lead, .fact small { color:#202020 !important; }
+  .how div i { color:#000080 !important; } .numbers b, .card .name { color:#000 !important; }
+  .vocab b { color:#7a5a00 !important; }
+  .found.bad { background:#ffe8e8 !important; } .found.ok { background:#e8ffe8 !important; color:#005a00 !important; }
+  .found h2 { color:#900000 !important; } .found .said, .found .x { color:#b00000 !important; }
+  .found .when, .hitcmd { color:#404040 !important; } .found .hit .c { color:#000080 !important; }
+  .found button, .repro button, button { background:#c0c0c0 !important; color:#000 !important; border:0 !important; border-radius:0 !important; font-weight:700;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  .repro { background:#fff !important; border:0 !important; border-radius:0 !important; color:#404040 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .repro code { color:#000 !important; }
+  pre { background:#fff !important; color:#000 !important; border-radius:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  pre div .n { color:#808080 !important; }
+  pre div.fatal { background:#ffe0e0 !important; border-left-color:#b00000 !important; }
+  pre div.hover { background:#ffff99 !important; border-left-color:#000080 !important; }
+  table { background:#fff; } th { background:#c0c0c0 !important; color:#000 !important; border-bottom:1px solid #808080 !important; }
+  td { border-bottom:1px solid #dfdfdf !important; color:#000; }
+  tr:hover td { background:#ffffcc !important; } tr.fatal td { background:#ffe8e8 !important; }
+  td.where, td.f { color:#202020 !important; } td.c { color:#000080 !important; } td.f .k { color:#7a5a00 !important; }
+  .cell { border-radius:0 !important; }
+  .held { background:#d8f0d8 !important; color:#006000 !important; }
+  .broken { background:#b00000 !important; color:#fff !important; box-shadow:none !important; }
+  .crashed { background:#fff0b0 !important; color:#7a5a00 !important; }
+  .not_reached { color:#a0a0a0 !important; }
+  .legend { color:#202020 !important; }
+  .tag { border-radius:0 !important; border:1px solid #808080; background:#fff !important; }
+  .tag.never { color:#a00000 !important; } .tag.ok { color:#006000 !important; } .tag.skip { color:#404040 !important; }
+  .scroll { box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .fact b { color:#000 !important; } .fact.ok b { color:#007a00 !important; } .fact.bad b { color:#b00000 !important; } .fact.warn b { color:#7a5a00 !important; }
+  td.r.pass { color:#007a00 !important; } td.r.fail { color:#b00000 !important; } td.lim { color:#5a4000 !important; }
+  h1 { color:#000 !important; } h1 span { color:#000080 !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Virtu<span>Lab</span></div>
+  <div class="crumb" id="crumb"></div>
+  <div class="spacer"></div>
+  <span class="pill" id="pill"></span>
+</header>
+<div class="wrap">
+  <div id="repro"></div>
+  <h2>How one glitched run works</h2>
+  <div class="how" id="how"></div>
+  <p class="numbers" id="numbers"></p>
+  <div class="found" id="found"></div>
+  <div class="grid">
+    <div class="card"><h2>Your C code</h2><pre id="code"></pre>
+      <p class="note">The compiler turns each line into a few processor instructions, listed on the right. Hover an instruction to see its line.</p></div>
+    <div class="card"><h2>What the processor runs, and what one skipped instruction did</h2>
+      <div class="scroll"><table id="table"></table></div>
+      <div class="legend">
+        <span><span class="cell held">✓</span> still did the right thing</span>
+        <span><span class="cell broken">✗</span> broke the rule</span>
+        <span><span class="cell crashed">!</span> crashed or hung</span>
+        <span><span class="cell not_reached">·</span> never reached after that moment</span>
+      </div></div>
+  </div>
+  <p class="note">A model, not physics: one instruction is skipped, once, on its first execution after the chosen moment. Real glitches can do more. A clean sweep is evidence for this build and this model, not proof of safety.</p>
+</div>
+<script>
+const D = /*SWEEP_DATA*/null;
+// reproduce: the command behind this page, and one per finding
+function copyText(text, button) {
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => { button.textContent = "Copied"; }, () => {});
+}
+function reproLine(command) {
+  return `<div class="repro">Reproduce, in the project folder: <code>${esc(command)}</code><button onclick="copyText(this.previousElementSibling.textContent, this)">Copy</button></div>`;
+}
+const FLAGS = ((D && D.command) || "").match(/'--cflags=[^']*'|--cflags=\S+/);
+const flagPart = FLAGS ? " " + FLAGS[0] : "";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+$("repro").innerHTML = reproLine(D.command || "");
+const cases = Object.keys(D.cases);
+const caseName = cases[0] || "";
+const times = [...new Set(D.runs.map(r => r.at))].sort((a, b) => a - b);
+const reached = D.runs.filter(r => r.result !== "not_reached");
+const broken = D.runs.filter(r => r.result === "broken");
+const crashed = D.runs.filter(r => r.result === "crashed");
+const forbid = cases.flatMap(c => D.cases[c].forbid);
+
+$("crumb").innerHTML = `Glitch sweep · <b>${esc(D.target)}</b> · scenario <b>${esc(cases.join(", ").replace(/_/g, " "))}</b>`;
+$("pill").className = "pill " + (broken.length ? "bad" : "ok");
+$("pill").textContent = broken.length ? `${broken.length} of ${reached.length} glitches broke the rule` : `0 of ${reached.length} glitches broke the rule`;
+
+$("how").innerHTML = [
+  ["Replay the scenario", `${esc((D.cases[caseName] || {}).description || "The same firmware and the same scripted inputs, every run.")}`],
+  ["Arm a trap", `At ${times.map(t => t + " ms").join(" or ")} of virtual time, set a trap on <b>one</b> instruction of ` +
+    `${(D.functions || []).length ? `<code>${D.functions.map(esc).join(", ")}</code>` : "the code"} in <code>${esc(D.target)}</code>: ` +
+    `the decision <code>virtulab.yml</code> names as the one to protect (<code>target</code>, <code>functions</code>).`],
+  ["Skip it, once", "The first time the processor reaches that instruction, it jumps straight to the next one, as a voltage glitch can make a real chip do."],
+  ["Judge the result", `The firmware runs to the end. If it prints ${forbid.map(f => `<code>${esc(f)}</code>`).join(" or ")}, the glitch broke the rule.`],
+].map(([t, s], i) => `<div><i>${i + 1}</i><b>${t}</b><span>${s}</span></div>`).join("");
+$("numbers").innerHTML = `<b>${D.runs.length}</b> runs = <b>${D.instructions.length}</b> instructions × <b>${times.length}</b> moment${times.length === 1 ? "" : "s"}` +
+  ` · <b>${reached.length}</b> reached their instruction · <b style="color:${broken.length ? "var(--bad)" : "var(--ok)"}">${broken.length}</b> broke the rule` +
+  ` · <b>${crashed.length}</b> crashed or hung (counted apart: a crash is not safe either)`;
+
+// where a single skip broke the rule
+const byAddr = Object.fromEntries(D.instructions.map(i => [i.address, i]));
+if (broken.length) {
+  $("found").className = "found bad";
+  $("found").innerHTML = `<h2 style="color:var(--bad);margin-bottom:4px">Where one skipped instruction broke the rule</h2>` + broken.map((r, k) => {
+    const i = byAddr[r.address] || {}, line = i.file === D.target && i.line ? (D.source[i.line - 1] || "").trim() : "";
+    return `<div class="hit"><code>${esc(i.where || "")}</code><code>${esc(i.instruction || "")}</code>
+      ${i.line ? `<code class="c">${esc(D.target)}:${i.line} &nbsp;${esc(line)}</code>` : ""}<span class="when">after ${r.at} ms</span>
+      ${window.parent !== window ? `<button data-k="${k}">Replay on the board</button>` : ""}</div>
+      <div class="hitcmd">${esc(`virtulab trace --case ${r.case}${flagPart} --skip 0x${r.address.toString(16)}@${r.at}ms`)}</div>`;
+  }).join("");
+  $("found").onclick = e => { const b = e.target.closest("button"); if (!b) return; const r = broken[+b.dataset.k];
+    parent.postMessage({ type: "replay", case: r.case, address: r.address, at: r.at }, location.origin); };
+} else {
+  $("found").className = "found ok";
+  $("found").textContent = `No single skipped instruction broke the rule, in ${reached.length} runs that reached their instruction.`;
+}
+
+// the C code of the swept functions
+const mine = D.instructions.filter(i => i.file === D.target && i.line);
+const fatalLines = new Set(D.instructions.filter(i => broken.some(r => r.address === i.address)).map(i => i.line));
+if (mine.length && D.source.length) {
+  const lo = Math.max(1, Math.min(...mine.map(i => i.line)) - 3), hi = Math.min(D.source.length, Math.max(...mine.map(i => i.line)) + 2);
+  let html = "";
+  for (let n = lo; n <= hi; n++)
+    html += `<div id="L${n}" class="${fatalLines.has(n) ? "fatal" : ""}"><span class="n">${n}</span>${esc(D.source[n - 1] || "")}</div>`;
+  $("code").innerHTML = html;
+} else $("code").textContent = "(source not available)";
+
+// the instructions, with one cell per moment
+const result = (address, at) => (D.runs.find(r => r.address === address && r.at === at) || {}).result || "not_reached";
+const sym = { held: "✓", broken: "✗", crashed: "!", not_reached: "·" };
+let rows = `<tr><th>where</th><th>instruction</th><th class="cl">C line</th>${times.map(t => `<th class="t">${t} ms</th>`).join("")}</tr>`;
+for (const i of D.instructions) {
+  const fatal = times.some(t => result(i.address, t) === "broken");
+  const c = i.file === D.target && i.line ? (D.source[i.line - 1] || "").trim() : "";
+  rows += `<tr class="${fatal ? "fatal" : ""}" data-line="${i.file === D.target ? i.line || "" : ""}">
+    <td class="where" title="0x${i.address.toString(16).padStart(8, "0")}">${esc(i.where)}</td>
+    <td><code>${esc(i.instruction)}</code></td><td class="c" title="${esc(c)}">${i.line ? i.line + ": " : ""}${esc(c)}</td>
+    ${times.map(t => { const r = result(i.address, t); return `<td class="t"><span class="cell ${r}" title="${r.replace("_", " ")}">${sym[r]}</span></td>`; }).join("")}</tr>`;
+}
+$("table").innerHTML = rows;
+// inside the studio, a broken cell replays that glitch on the board, and a C line opens the code
+if (window.parent !== window) try {
+  document.querySelectorAll(".cell.broken").forEach(cell => {
+    const tr = cell.closest("tr"), col = [...tr.children].indexOf(cell.parentElement) - 3;
+    const ins = D.instructions[[...tr.parentElement.children].indexOf(tr) - 1];
+    cell.style.cursor = "pointer"; cell.title = "Replay this glitch on the board";
+    cell.onclick = () => parent.postMessage({ type: "replay", case: caseName, address: ins.address, at: times[col] }, location.origin);
+  });
+  document.querySelectorAll("pre div").forEach(div => { div.style.cursor = "pointer";
+    div.onclick = () => parent.postMessage({ type: "open", file: D.target, line: Number(div.id.slice(1)) }, location.origin); });
+  document.querySelector(".legend").insertAdjacentHTML("beforeend", "<span>click a red cell to replay that glitch on the board</span>");
+} catch (err) { console.error("studio links:", err); }
+// bring the first instruction a glitch broke into view
+const first = document.querySelector("tr.fatal");
+function centreFatal() {
+  if (!first) return;
+  const box = first.closest(".scroll");
+  box.scrollTop = first.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - box.clientHeight / 2;
+}
+if (window.parent === window) { centreFatal(); window.addEventListener("load", () => setTimeout(centreFatal, 50)); }
+else window.addEventListener("load", () => window.scrollTo(0, 0));   // in the studio the findings box is at the top
+$("table").addEventListener("mouseover", e => {
+  const tr = e.target.closest("tr"); document.querySelectorAll("pre div.hover").forEach(d => d.classList.remove("hover"));
+  const line = tr && tr.dataset.line; if (!line) return;
+  const div = $("L" + line); if (div) div.classList.add("hover");
+});
+</script>
+</body>
+</html>

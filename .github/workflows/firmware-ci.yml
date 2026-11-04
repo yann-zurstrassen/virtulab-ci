@@ -1,41 +1,208 @@
-name: VirtuLab Firmware CI
+name: VirtuLab CI
 
 on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+
+permissions:
+  contents: read
+
+# The demo firmware (src/, test/, fuzz/, fault/) is described by virtulab.yml. `make` runs the
+# same engine path as the `checks` job, and every job here tests the image built from this code.
+env:
+  RUN_ACTION_IMAGE: >-
+    docker run --rm
+    -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$RUNNER_TEMP:$RUNNER_TEMP"
+    -w "$GITHUB_WORKSPACE"
+    --env-file <(compgen -e | grep -E '^(GITHUB|INPUT|RUNNER)_')
+    virtulab
 
 jobs:
-  virtual-test:
+  engine-tests:
+    name: Engine tests (all boards)
     runs-on: ubuntu-latest
-    name: Emulate & Benchmark
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build the action image
+        run: docker build -t virtulab .
+
+      - name: Run unit and end-to-end tests inside the image
+        run: >
+          docker run --rm -v "$PWD:/src" -w /src --entrypoint python3 virtulab
+          -m unittest discover -v -s tests -t .
+
+  # Every check of the demo firmware, from virtulab.yml. Runs the pull request's code, so it holds
+  # a read-only token and keeps no credentials on disk.
+  checks:
+    name: All checks (unit, footprint, coverage, fuzz, fault injection)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: Run VirtuLab CI
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          INPUT_FUZZ_SECONDS: '60'
+          INPUT_COMMENT: 'false'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report
+          path: .virtulab/report.md
+          include-hidden-files: true   # upload-artifact skips dot folders by default
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence
+          path: .virtulab/evidence
+          include-hidden-files: true
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzz-crashes
+          path: fuzz/crashes
+          if-no-files-found: ignore
+
+  wizard-project:
+    name: New project from `virtulab init` (QEMU, all five tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: Create a project the way a user would
+        run: >
+          mkdir -p "$RUNNER_TEMP/wizard" &&
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/wizard:/workspace" virtulab
+          init -b lm3s6965evb -t unit,footprint,coverage,fuzz,fault --template starter --ci github -y
+      - name: Run it through the published-action path (reads virtulab.yml, no inputs)
+        shell: bash
+        run: |
+          git -C "$RUNNER_TEMP/wizard" init -q -b main
+          git -C "$RUNNER_TEMP/wizard" add -A
+          git -C "$RUNNER_TEMP/wizard" -c user.name=ci -c user.email=ci@example.invalid commit -q -m init
+          eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: ${{ runner.temp }}/wizard
+          INPUT_BASELINE_REF: HEAD
+          INPUT_COMMENT: 'false'
+          INPUT_REPORT_ID: wizard
+
+  wizard-sensors:
+    name: New project with two I²C sensors (Renode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: Create a project with a TMP108 and a BMP180 on I²C1
+        run: >
+          mkdir -p "$RUNNER_TEMP/sensors" &&
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/sensors:/workspace" virtulab
+          init -b stm32f4_discovery -m temp=tmp108@i2c1:0x48 -m baro=bmp180@i2c1
+          -t unit,coverage --template starter --ci github -y
+      - name: Run it (reads virtulab.yml, no inputs)
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: ${{ runner.temp }}/sensors
+          INPUT_COMMENT: 'false'
+          INPUT_REPORT_ID: sensors
+
+  wizard-all-sensors:
+    name: New project with all 11 sensors on I²C, SPI and UART (Renode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: Create a project with every sensor in the catalog
+        run: >
+          mkdir -p "$RUNNER_TEMP/all-sensors" &&
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/all-sensors:/workspace" virtulab
+          init -b stm32f4_discovery -m temp=tmp108@i2c1 -m baro=bmp180@i2c1 -m power=ina219@i2c1
+          -m imu=mpu6050@i2c1 -m air=sht31@i2c1 -m accel=adxl345@spi1 -m couple=max31855@spi1
+          -m storage=w25q128@spi1 -m gps=nmea_gps@usart1 -m modem=at_modem@usart3 -m rs485=modbus_rtu@uart4
+          -t unit,coverage --template starter --ci github -y
+      - name: Run it (reads virtulab.yml, no inputs)
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: ${{ runner.temp }}/all-sensors
+          INPUT_COMMENT: 'false'
+          INPUT_REPORT_ID: all-sensors
+
+  demo:
+    name: Guided demo (a green run, then three broken changes that must be caught)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the action image
+        run: docker build -t virtulab .
+      - name: virtulab demo
+        run: docker run --rm virtulab demo -C /tmp/virtulab-demo
+
+  # Holds the write token and never checks out or builds the pull request's code.
+  report:
+    name: Sticky PR comment
+    needs: [ checks ]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: report
+      - name: Post the report
+        continue-on-error: true   # pull requests from forks get a read-only token
+        run: gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file report.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+
+  thermostat:
+    name: Emulate STM32F4 + I2C sensor (examples/thermostat, Renode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build the action image
+        run: docker build -t virtulab .
 
       - name: Run VirtuLab CI
-        id: virtulab
-        uses: ./ # Runs action.yml from repo root
-        with:
-          board: 'lm3s6965evb'
-          source_file: 'main.c'
-          linker_script: 'layout.ld'
-          timeout: '30s'
-
-      - name: Publish PR Diagnostic Summary
-        if: always()
-        run: |
-          echo "### 🚀 VirtuLab CI — Emulation Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Usage |" >> $GITHUB_STEP_SUMMARY
-          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Target Board** | \`lm3s6965evb\` (ARM Cortex-M3) |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Flash Footprint** | \`${{ steps.virtulab.outputs.flash_bytes }} Bytes\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **RAM Footprint** | \`${{ steps.virtulab.outputs.ram_bytes }} Bytes\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### Execution Log" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
-          cat qemu_output.log >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        shell: bash
+        run: eval "$RUN_ACTION_IMAGE"
+        env:
+          INPUT_WORKING_DIRECTORY: examples/thermostat
+          INPUT_BOARD: stm32f4_discovery
+          INPUT_SOURCES: |
+            src/*.c
+            test/*.c
+          INPUT_INCLUDE_DIRS: include
+          INPUT_PERIPHERALS: board.repl
+          INPUT_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          INPUT_COMMENT: 'false'
+          INPUT_REPORT_ID: thermostat

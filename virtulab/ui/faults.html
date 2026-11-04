@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VirtuLab fault scenarios</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#141821; --panel2:#1a1f2b; --line:#262c3a; --text:#e3e7ef; --muted:#8b94a7;
+          --accent:#5aa9ff; --ok:#4fd18b; --bad:#ff5d5d; --warn:#ffc94d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--text);
+         background:radial-gradient(1200px 700px at 30% 0%, #131826 0%, var(--bg) 60%) fixed; }
+  header { display:flex; align-items:center; gap:14px; padding:12px 22px; border-bottom:1px solid var(--line); }
+  .logo { font-weight:700; } .logo span { color:var(--accent); }
+  .crumb { color:var(--muted); } .crumb b { color:var(--text); }
+  .spacer { flex:1; }
+  .pill { padding:4px 12px; border-radius:999px; font-weight:600; font-size:13px; }
+  .pill.bad { background:var(--bad); color:#fff; } .pill.ok { background:var(--ok); color:#0b0d12; }
+  .wrap { max-width:1500px; margin:0 auto; padding:16px 20px 30px; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:0 0 10px; font-weight:600; }
+  .how { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:10px; }
+  .how div { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; position:relative; }
+  .how div > b { display:block; margin-bottom:3px; }
+  .how div span { color:#c0c7d4; font-size:13px; }
+  .how div i { position:absolute; top:10px; right:12px; font-style:normal; color:var(--accent); font-weight:700; }
+  code { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; }
+  .vocab { display:flex; gap:8px; flex-wrap:wrap; margin:4px 0 12px; }
+  .vocab span { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:12.5px; color:#c0c7d4; }
+  .vocab b { color:var(--warn); margin-right:6px; }
+  .numbers { color:var(--muted); margin:6px 0 14px; } .numbers b { color:var(--text); }
+  .found { border-radius:12px; padding:10px 14px; margin:0 0 16px; border:1px solid var(--line); background:var(--panel); }
+  .found.bad { border-color:rgba(255,93,93,.55); background:rgba(255,93,93,.06); }
+  .found.ok { border-color:rgba(79,209,139,.5); background:rgba(79,209,139,.06); color:var(--ok); font-weight:600; }
+  .found .hit { display:flex; align-items:center; gap:12px; padding:5px 0; flex-wrap:wrap; }
+  .found .x { color:var(--bad); font-weight:800; }
+  .found .case { font-weight:700; text-transform:capitalize; }
+  .found .said { color:var(--bad); }
+  .found .when { color:var(--muted); font-size:12.5px; }
+  .found button { margin-left:auto; background:var(--accent); color:#06101f; border:0; border-radius:8px; font:inherit; font-weight:700; padding:5px 12px; cursor:pointer; }
+  .cases { display:grid; grid-template-columns:repeat(auto-fill, minmax(560px, 1fr)); gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card .name { font-weight:700; font-size:16px; text-transform:capitalize; }
+  .card .desc { color:#b9c1cf; font-size:12.5px; margin:3px 0 8px; }
+  .tag { display:inline-block; font:11.5px ui-monospace, Menlo, monospace; padding:2px 7px; border-radius:6px; margin:0 4px 4px 0; }
+  .tag.never { background:rgba(255,93,93,.12); color:var(--bad); } .tag.ok { background:rgba(79,209,139,.12); color:var(--ok); }
+  .tag.skip { background:rgba(139,148,167,.15); color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:6px; }
+  th { text-align:center; color:var(--muted); font-weight:600; padding:5px 6px; border-bottom:1px solid var(--line); }
+  th:first-child, td:first-child { text-align:left; }
+  td { padding:3px 6px; border-bottom:1px solid #1d2230; text-align:center; }
+  td.f { font-family:ui-monospace, Menlo, monospace; white-space:nowrap; }
+  td.f .k { color:var(--warn); }
+  .cell { display:inline-grid; place-items:center; width:30px; height:22px; border-radius:6px; font-weight:700; font-size:13px; }
+  .held { background:rgba(79,209,139,.15); color:var(--ok); }
+  .broken { background:var(--bad); color:#fff; box-shadow:0 0 12px rgba(255,93,93,.6); cursor:default; }
+  .crashed { background:rgba(255,201,77,.15); color:var(--warn); }
+  .note { margin-top:14px; color:var(--muted); font-size:12.5px; }
+  .repro { display:flex; gap:10px; align-items:center; background:#07090d; border:1px solid var(--line); border-radius:8px;
+           padding:7px 10px; margin:0 0 14px; font-size:12.5px; color:var(--muted); }
+  .repro code { flex:1; color:#d7e0ee; font:12.5px ui-monospace, Menlo, monospace; word-break:break-all; }
+  .repro button, .copy { background:#1a1f2b; color:#e3e7ef; border:1px solid #262c3a; border-radius:6px; font:inherit; font-size:12px; padding:3px 9px; cursor:pointer; }
+  .hitcmd { width:100%; font:11.5px ui-monospace, Menlo, monospace; color:#8b94a7; margin:-2px 0 4px 26px; }
+
+  /* ---- classic desktop theme: colours, fonts, borders and corners only ---- */
+  :root { --bg:#c0c0c0; --panel:#c0c0c0; --panel2:#c0c0c0; --line:#808080; --text:#000; --muted:#404040;
+          --accent:#000080; --ok:#007a00; --bad:#b00000; --warn:#7a5a00; }
+  body { background:#c0c0c0 !important; color:#000 !important; font-family:Tahoma, Verdana, "MS Sans Serif", Geneva, sans-serif !important; }
+  code, pre, .repro code, .hitcmd, td.f, td.where, td.c, td.addr { font-family:"Courier New", Courier, monospace !important; }
+  header { background:#000080 !important; border-bottom:2px solid #000 !important; }
+  header .logo, header .logo span, header .crumb, header .crumb b { color:#fff !important; }
+  h2 { color:#000 !important; }
+  .pill { border-radius:0 !important; }
+  .pill.bad { background:#b00000 !important; color:#fff !important; } .pill.ok { background:#008000 !important; color:#fff !important; }
+  .how div, .card, .vocab span, .found, .fact { background:#c0c0c0 !important; border:0 !important; border-radius:0 !important;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; color:#000 !important; }
+  .how div span, .card .desc, .note, .numbers, .lead, .fact small { color:#202020 !important; }
+  .how div i { color:#000080 !important; } .numbers b, .card .name { color:#000 !important; }
+  .vocab b { color:#7a5a00 !important; }
+  .found.bad { background:#ffe8e8 !important; } .found.ok { background:#e8ffe8 !important; color:#005a00 !important; }
+  .found h2 { color:#900000 !important; } .found .said, .found .x { color:#b00000 !important; }
+  .found .when, .hitcmd { color:#404040 !important; }
+  .found button, .repro button, button { background:#c0c0c0 !important; color:#000 !important; border:0 !important; border-radius:0 !important; font-weight:700;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  .repro { background:#fff !important; border:0 !important; border-radius:0 !important; color:#404040 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .repro code { color:#000 !important; }
+  pre { background:#fff !important; color:#000 !important; border-radius:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  pre div .n { color:#808080 !important; }
+  pre div.fatal { background:#ffe0e0 !important; border-left-color:#b00000 !important; }
+  pre div.hover { background:#ffff99 !important; border-left-color:#000080 !important; }
+  table { background:#fff; } th { background:#c0c0c0 !important; color:#000 !important; border-bottom:1px solid #808080 !important; }
+  td { border-bottom:1px solid #dfdfdf !important; color:#000; }
+  tr:hover td { background:#ffffcc !important; } tr.fatal td { background:#ffe8e8 !important; }
+  td.where, td.f { color:#202020 !important; } td.c { color:#000080 !important; } td.f .k { color:#7a5a00 !important; }
+  .cell { border-radius:0 !important; }
+  .held { background:#d8f0d8 !important; color:#006000 !important; }
+  .broken { background:#b00000 !important; color:#fff !important; box-shadow:none !important; }
+  .crashed { background:#fff0b0 !important; color:#7a5a00 !important; }
+  .not_reached { color:#a0a0a0 !important; }
+  .legend { color:#202020 !important; }
+  .tag { border-radius:0 !important; border:1px solid #808080; background:#fff !important; }
+  .tag.never { color:#a00000 !important; } .tag.ok { color:#006000 !important; } .tag.skip { color:#404040 !important; }
+  .scroll { box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .fact b { color:#000 !important; } .fact.ok b { color:#007a00 !important; } .fact.bad b { color:#b00000 !important; } .fact.warn b { color:#7a5a00 !important; }
+  td.r.pass { color:#007a00 !important; } td.r.fail { color:#b00000 !important; } td.lim { color:#5a4000 !important; }
+  h1 { color:#000 !important; } h1 span { color:#000080 !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Virtu<span>Lab</span></div>
+  <div class="crumb">Fault scenarios · <b>generated from your scenarios</b></div>
+  <div class="spacer"></div>
+  <span class="pill" id="pill"></span>
+</header>
+<div class="wrap">
+  <div id="repro"></div>
+  <h2>How these cases are generated</h2>
+  <div class="how" id="how"></div>
+  <div class="vocab" id="vocab"></div>
+  <p class="numbers" id="numbers"></p>
+  <div class="found" id="found"></div>
+  <div class="cases" id="cases"></div>
+  <p class="note">Each fault lasts <span id="win"></span> ms, then the peripheral recovers. Silent on I²C means every byte reads 0xFF: the emulator cannot refuse an address, so the controller still sees an acknowledge. A case that holds shows the firmware did not break that rule under that fault, in this build. It is not proof of safety.</p>
+</div>
+<script>
+const D = /*FAULT_DATA*/null;
+// reproduce: the command behind this page, and one per finding
+function copyText(text, button) {
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => { button.textContent = "Copied"; }, () => {});
+}
+function reproLine(command) {
+  return `<div class="repro">Reproduce, in the project folder: <code>${esc(command)}</code><button onclick="copyText(this.previousElementSibling.textContent, this)">Copy</button></div>`;
+}
+const FLAGS = ((D && D.command) || "").match(/'--cflags=[^']*'|--cflags=\S+/);
+const flagPart = FLAGS ? " " + FLAGS[0] : "";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+$("repro").innerHTML = reproLine(D.command || "");
+const inStudio = window.parent !== window;
+const active = D.cases.filter(c => !c.skipped);
+$("win").textContent = D.window_ms;
+$("pill").className = "pill " + (D.broken ? "bad" : "ok");
+$("pill").textContent = `${D.broken} of ${D.runs} fault cases broke a rule`;
+$("how").innerHTML = [
+  ["Start from your scenarios", `The ${D.cases.length} scenarios in <code>virtulab.yml</code>, as written. Nothing to add.`],
+  ["Break one peripheral at a time", `Each fault below, on each sensor, at each moment the scenario's inputs change, for ${D.window_ms} ms.`],
+  ["Judge with your own rule", "If the firmware then reports what the scenario says it must never report, that fault broke the rule."],
+].map(([t, s], i) => `<div><i>${i + 1}</i><b>${t}</b><span>${s}</span></div>`).join("");
+$("vocab").innerHTML = Object.entries(D.vocabulary).map(([k, v]) => `<span><b>${k}</b>${esc(v)}</span>`).join("");
+$("numbers").innerHTML = `<b>${D.runs}</b> cases = ` + active.map(c => `${esc(c.name.replace(/_/g, " "))} ${c.faults.length}×${c.moments.length}`).join(" + ") +
+  ` (faults × moments) · ` +
+  `<b style="color:${D.broken ? "var(--bad)" : "var(--ok)"}">${D.broken}</b> broke a rule · <b>${D.crashed}</b> crashed or hung`;
+
+const findings = [];
+for (const c of active) {
+  const label = Object.fromEntries(c.faults.map(f => [f.key, f.label]));
+  for (const r of c.runs) if (r.result === "broken") findings.push({ c, r, label: label[r.fault] });
+}
+if (findings.length) {
+  $("found").className = "found bad";
+  $("found").innerHTML = `<h2 style="color:var(--bad);margin-bottom:4px">Where one faulty peripheral broke a rule</h2>` + findings.map((f, k) =>
+    `<div class="hit"><span class="case">${esc(f.c.name.replace(/_/g, " "))}</span>
+     <code>${esc(f.label)}</code><span class="when">at ${f.r.at} ms, for ${D.window_ms} ms</span>
+     <span>printed <code class="said">${esc(f.r.said)}</code>, and ${esc(f.c.name.replace(/_/g, " "))} must never report
+       <code class="said">${esc(f.c.forbid.filter(x => (f.r.said || "").includes(x)).join(", ") || f.c.forbid.join(", "))}</code></span>
+     ${inStudio ? `<button data-k="${k}">Watch on the board</button>` : ""}</div>
+     <div class="hitcmd">${esc(`virtulab trace --case ${f.c.name}${flagPart} --fault ${f.r.fault}@${f.r.at}ms`)}</div>`).join("");
+  $("found").onclick = e => { const b = e.target.closest("button"); if (!b) return; const f = findings[+b.dataset.k];
+    parent.postMessage({ type: "fault", case: f.c.name, fault: f.r.fault, at: f.r.at }, location.origin); };
+} else {
+  $("found").className = "found ok";
+  $("found").textContent = `No single faulty peripheral broke a rule, in ${D.runs} generated cases.`;
+}
+
+const sym = { held: "✓", broken: "✗", crashed: "!" };
+$("cases").innerHTML = D.cases.map(c => {
+  let h = `<div class="card"><div class="name">${esc(c.name.replace(/_/g, " "))}</div><div class="desc">${esc(c.description || "")}</div>`;
+  h += c.forbid.map(x => `<span class="tag never">never ${esc(x)}</span>`).join("");
+  if (c.skipped) return h + `<span class="tag skip">skipped: ${esc(c.skipped)}</span></div>`;
+  h += `<span class="tag ok">without faults: held</span>`;
+  h += `<table><tr><th>fault</th>${c.moments.map(m => `<th>at ${m} ms</th>`).join("")}</tr>`;
+  for (const f of c.faults) {
+    h += `<tr><td class="f">${esc(f.module)}${f.input ? "." + esc(f.input) : ""} <span class="k">${f.kind}</span></td>` +
+      c.moments.map(m => { const r = c.runs.find(x => x.fault === f.key && x.at === m);
+        return r ? `<td><span class="cell ${r.result}" title="reported: ${esc(r.said || "nothing")}">${sym[r.result]}</span></td>` : "<td>·</td>"; }).join("") + "</tr>";
+  }
+  return h + "</table></div>";
+}).join("");
+</script>
+</body>
+</html>

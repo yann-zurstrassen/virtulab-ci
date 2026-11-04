@@ -1,0 +1,8 @@
+ASSUMPTIONS (yours, not measured):
+  developers            20
+  PRs / dev / day       1
+  working days / week   5
+  avg bench wait (h)    2
+  rerun rate            0.2
+  caught-share          0.5
+hours saved per week: 20.0

@@ -19,6 +19,9 @@ def build(cfg, suite, root: Path, manifest: dict, command: str = "") -> dict:
         for case in outcome.tests.cases:
             unit.append({"file": case.file, "line": case.line, "name": case.name, "result": case.result,
                          "message": case.message, "checks": case.checks})
+    from .scaffold import origins
+    files = sorted({u["file"] for u in unit})
+    who = origins(cfg, root, files)
     checks = []
     for c in suite.checks:
         test = TESTS.get(c.test)
@@ -31,6 +34,7 @@ def build(cfg, suite, root: Path, manifest: dict, command: str = "") -> dict:
                   "emulator": BOARDS[cfg.board].emulator},
         "manifest": manifest,
         "unit": unit,
+        "origins": who,
         "checks": checks,
         "modules": {n: {"model": m.model, "bus": m.bus, "address": m.address} for n, m in cfg.modules.items()},
     }

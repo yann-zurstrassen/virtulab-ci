@@ -40,18 +40,18 @@
   .badge.project { background:rgba(255,201,77,.14); color:#ffd36b; }
   .src.project { background:linear-gradient(90deg, rgba(255,201,77,.06), transparent 40%); }
   .src.project div::before { border-right:2px solid rgba(255,201,77,.55); margin-right:10px; }
-  .tree button.starter, .tree button.edited { border-left:3px solid #a078ff; color:#cdbdf5; }
+  .tree button.starter, .tree button.extended { border-left:3px solid #a078ff; color:#cdbdf5; }
   .tree button.virtulab { border-left:3px solid #3cc8b4; color:#a8e6dc; }
   .tree button .ed { color:#ffc94d; font-size:11px; margin-left:6px; }
   .badge { font-size:11.5px; font-weight:700; padding:2px 9px; border-radius:999px; }
   .badge.yours { background:rgba(90,169,255,.15); color:#7cc4ff; }
-  .badge.starter, .badge.edited { background:rgba(160,120,255,.15); color:#c4a7ff; }
+  .badge.starter, .badge.extended { background:rgba(160,120,255,.15); color:#c4a7ff; }
   .badge.virtulab { background:rgba(60,200,180,.15); color:#5fd4c4; }
-  .src.starter, .src.edited { background:linear-gradient(90deg, rgba(160,120,255,.07), transparent 40%); }
+  .src.starter, .src.extended { background:linear-gradient(90deg, rgba(160,120,255,.07), transparent 40%); }
   .src.virtulab { background:linear-gradient(90deg, rgba(60,200,180,.07), transparent 40%); }
-  .src.yours div::before, .src.starter div::before, .src.edited div::before, .src.virtulab div::before { border-right:2px solid transparent; margin-right:10px; }
+  .src.yours div::before, .src.starter div::before, .src.extended div::before, .src.virtulab div::before { border-right:2px solid transparent; margin-right:10px; }
   .src.yours div::before { border-right-color:rgba(90,169,255,.5); }
-  .src.starter div::before, .src.edited div::before { border-right-color:rgba(160,120,255,.6); }
+  .src.starter div::before, .src.extended div::before { border-right-color:rgba(160,120,255,.6); }
   .src.virtulab div::before { border-right-color:rgba(60,200,180,.6); }
   .editor { display:grid; grid-template-rows:40px 1fr; min-height:0; }
   .editor .bar { display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid var(--line); color:var(--muted); font-size:13px; }
@@ -158,7 +158,7 @@
                  padding:2px 8px !important; border-left:4px solid transparent !important; }
   .tree button.yours { border-left-color:#0000c0 !important; }
   .tree button.project { border-left-color:#c08000 !important; }
-  .tree button.starter, .tree button.edited { border-left-color:#800080 !important; }
+  .tree button.starter, .tree button.extended { border-left-color:#800080 !important; }
   .tree button.virtulab { border-left-color:#008080 !important; }
   .tree button.on { background:#000080 !important; color:#fff !important; }
   .tree .group { background:#c0c0c0 !important; box-shadow:inset -1px -1px #808080, inset 1px 1px #fff !important; margin:10px 0 2px !important; }
@@ -166,7 +166,7 @@
   .tree .group.starter { border-left:6px solid #800080; } .tree .group.virtulab { border-left:6px solid #008080; }
   .tree button .ed { color:#7a5a00 !important; }
   .badge.yours { border-left:6px solid #0000c0 !important; } .badge.project { border-left:6px solid #c08000 !important; }
-  .badge.starter, .badge.edited { border-left:6px solid #800080 !important; } .badge.virtulab { border-left:6px solid #008080 !important; }
+  .badge.starter, .badge.extended { border-left:6px solid #800080 !important; } .badge.virtulab { border-left:6px solid #008080 !important; }
   .src { background-image:none !important; }
 </style>
 </head>
@@ -278,16 +278,16 @@ async function openFile(path, line, focus = true) {
 const ORIGIN = {
   project: ["Project file", "setup written by VirtuLab, scenarios by you"],
   yours: ["Your firmware", "written for this product"],
-  starter: ["From VirtuLab: starter drivers", "generated for your sensors, yours to change"],
+  starter: ["From VirtuLab: starter drivers and tests", "generated for your sensors; you may extend them"],
   virtulab: ["VirtuLab: runtime and sensor models", "read-only: linked in, or emulating the chips"],
 };
-const ORIGIN_LABEL = { project: "setup from VirtuLab · scenarios and edits by you", yours: "your code", starter: "VirtuLab starter, unchanged", edited: "VirtuLab starter, edited by you",
+const ORIGIN_LABEL = { project: "setup from VirtuLab · scenarios and edits by you", yours: "your code", starter: "VirtuLab starter, unchanged", extended: "VirtuLab starter, extended by you",
                        virtulab: "VirtuLab, read-only" };
 let origins = {};
 async function loadTree() {
   const res = await api("/api/studio/files");
   origins = res.origins;
-  const section = o => o === "edited" ? "starter" : o;
+  const section = o => o === "extended" ? "starter" : o;
   let html = "";
   for (const sec of ["project", "yours", "starter", "virtulab"]) {
     const files = res.files.filter(f => section(origins[f]) === sec);
@@ -297,7 +297,7 @@ async function loadTree() {
     for (const f of files) { const dir = f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : ""; (groups[dir] = groups[dir] || []).push(f); }
     for (const d of Object.keys(groups).sort((a, b) => (b === "") - (a === "") || a.localeCompare(b))) {
       if (d) html += `<div class="dir">${esc(d.replace(/^virtulab\//, ""))}</div>`;
-      html += groups[d].map(f => `<button class="${origins[f]}" data-path="${esc(f)}">${esc(f.split("/").pop())}${origins[f] === "edited" ? '<span class="ed">edited</span>' : ""}</button>`).join("");
+      html += groups[d].map(f => `<button class="${origins[f]}" data-path="${esc(f)}">${esc(f.split("/").pop())}${origins[f] === "extended" ? '<span class="ed">extended by you</span>' : ""}</button>`).join("");
     }
   }
   $("tree").innerHTML = html;

@@ -40,6 +40,10 @@
   .lim { color:var(--warn); }
   .out { background:var(--soft); border:1px solid var(--line); border-radius:4px; padding:6px 10px; font-family:ui-monospace, Menlo, monospace; font-size:12px; white-space:pre-wrap; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .who { display:inline-block; font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:800; padding:1px 6px;
+         border:1px solid; margin-left:8px; vertical-align:2px; }
+  .who.yours { color:#0000c0; border-color:#0000c0; } .who.gen { color:#800080; border-color:#800080; } .who.vl { color:#006b6b; border-color:#006b6b; }
+  .key { margin:14px 0 0; color:var(--muted); font-size:12px; }
   .foot { margin-top:34px; padding-top:12px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; }
   .toolbar { max-width:1040px; margin:16px auto 0; display:flex; justify-content:flex-end; gap:8px; }
   .toolbar button { font:inherit; padding:6px 14px; border-radius:4px; border:1px solid #b9c3d0; background:#fff; cursor:pointer; }
@@ -62,7 +66,9 @@ const human = s => String(s).replace(/^test_/, "").replace(/_/g, " ");
 const status = s => s === "pass" || s === "PASS" ? `<span class="tag pass">PASS</span>` : s === "fail" || s === "FAIL"
   ? `<span class="tag fail">FAIL</span>` : `<span class="tag skip">${esc(String(s).toUpperCase())}</span>`;
 let n = 0;
-const section = title => `<h2><span class="n">${++n}</span>${title}</h2>`;
+const WHO = { yours: ["yours", "your project"], gen: ["gen", "generated"], vl: ["vl", "VirtuLab"] };
+const tag = k => `<span class="who ${WHO[k][0]}">${WHO[k][1]}</span>`;
+const section = (title, who) => `<h2><span class="n">${++n}</span>${title}${who ? who.map(tag).join("") : ""}</h2>`;
 const overall = M.overall === "pass";
 const when = (M.generated || "").replace("T", " ").replace("Z", " UTC");
 let h = `<div class="brand"><div>
@@ -70,11 +76,12 @@ let h = `<div class="brand"><div>
     <h1>${esc(R.project)}</h1>
     <div class="sub">${esc(R.board.description)} · ${esc(R.board.cpu)} · emulated on ${esc(R.board.emulator === "renode" ? "Renode" : "QEMU")}</div>
     <div class="verdict ${overall ? "pass" : "fail"}">${overall ? "ALL CHECKS PASSED" : "CHECKS FAILED"}</div>
-  </div><div style="text-align:right"><div class="logo">Virtu<span>Lab</span></div><div class="sub">${esc(when)}</div></div></div>`;
+  </div><div style="text-align:right"><div class="logo">Virtu<span>Lab</span></div><div class="sub">${esc(when)}</div></div></div>
+  <p class="key">Who defined each part: ${tag("yours")} written by the project team · ${tag("gen")} produced by VirtuLab from the project's choices · ${tag("vl")} the same for every project.</p>`;
 
 // 1. identification
 const img = M.image || {};
-h += section("Identification") + `<table class="id">
+h += section("Identification", ["yours"]) + `<table class="id">
   <tr><td>Project</td><td>${esc(R.project)}</td></tr>
   <tr><td>Source revision</td><td><code>${esc(M.commit || "not a git checkout")}</code>${M.tree_clean === false ? ` <span class="lim">· with uncommitted changes: this result cannot be reproduced from the revision alone</span>` : ""}</td></tr>
   <tr><td>Target</td><td>${esc(R.board.name)} · ${esc(R.board.description)}</td></tr>
@@ -86,20 +93,20 @@ h += section("Identification") + `<table class="id">
   <tr><td>Produced by</td><td>VirtuLab ${esc(M.virtulab)} · ${esc(when)}</td></tr></table>`;
 
 // 2. summary
-h += section("Summary") + `<table><tr><th>Check</th><th>Result</th><th>Outcome</th></tr>` +
+h += section("Summary", ["gen"]) + `<table><tr><th>Check</th><th>Result</th><th>Outcome</th></tr>` +
   R.checks.map(c => `<tr><td>${esc(c.title)}</td><td>${status(c.status)}</td><td>${esc(c.summary)}</td></tr>`).join("") + `</table>`;
 
 // emulated peripherals, and how far each model has been checked
 const models = Object.entries(M.models || {});
 if (models.length) {
-  h += section("Emulated peripherals") + `<p class="note">Which model answered for each peripheral, and the evidence behind it. A model is promoted only with the evidence its level names.</p>
+  h += section("Emulated peripherals", ["vl"]) + `<p class="note">Which model answered for each peripheral, and the evidence behind it. A model is promoted only with the evidence its level names.</p>
     <table><colgroup><col style="width:90px"><col style="width:26%"><col><col style="width:24%"></colgroup><tr><th>Peripheral</th><th>Model</th><th>Evidence behind the model</th><th>Model file</th></tr>` +
     models.map(([n, e]) => `<tr><td><code>${esc(n)}</code></td><td>${esc(e.title)}</td><td><b>${esc(e.trust.label)}</b><br><span class="note">${esc(e.trust.detail)}</span></td>
       <td>${e.file ? `<code>${esc(e.file)}</code><br><code style="font-size:10.5px;word-break:break-all">${esc(e.sha256)}</code>` : "—"}</td></tr>`).join("") + `</table>`;
 }
 const inputs = Object.entries(M.inputs || {});
 if (inputs.length) {
-  h += section("Inputs") + `<p class="note">The files that decided what was tested, with their SHA-256: the same files give the same result.</p><table><tr><th>File</th><th>SHA-256</th></tr>` +
+  h += section("Inputs", ["yours"]) + `<p class="note">The files that decided what was tested, with their SHA-256: the same files give the same result.</p><table><tr><th>File</th><th>SHA-256</th></tr>` +
     inputs.map(([n, v]) => `<tr><td><code>${esc(n)}</code></td><td><code style="font-size:11px">${esc(v)}</code></td></tr>`).join("") + `</table>`;
 }
 
@@ -108,12 +115,15 @@ if (inputs.length) {
 if (R.unit.length) {
   const total = R.unit.length, failed = R.unit.filter(t => t.result === "FAIL").length;
   const checks = R.unit.reduce((a, t) => a + t.checks.length, 0);
-  h += section("Unit tests on the virtual board") +
+  h += section("Unit tests on the virtual board", ["yours", "gen"]) +
     `<p class="note">${total} tests, ${checks} checks, ${failed} failed. Built for the target and run on the emulated board. Each check shows the expression the test compared, the value it expected, and the value the firmware produced.</p>`;
   const files = {};
   for (const t of R.unit) (files[t.file] = files[t.file] || []).push(t);
   for (const [file, tests] of Object.entries(files)) {
-    h += `<h3><code>${esc(file)}</code></h3>`;
+    const o = (R.origins || {})[file];
+    h += `<h3><code>${esc(file)}</code>${o === "yours" ? tag("yours") + ` <span class="note">the team's own test</span>`
+      : o === "starter" ? tag("gen") + ` <span class="note">VirtuLab's starter test, unchanged</span>`
+      : o === "extended" ? tag("gen") + tag("yours") + ` <span class="note">VirtuLab's starter, extended by the team</span>` : ""}</h3>`;
     for (const t of tests) {
       h += `<div class="test"><div class="head"><b>${esc(human(t.name))}</b><code>${esc(file)}:${t.line}</code>${status(t.result)}</div>`;
       if (t.checks.length) {
@@ -136,7 +146,7 @@ if (R.unit.length) {
 // 4. scenarios: expected against actual
 const sc = R.checks.find(c => c.test === "scenarios");
 if (sc && sc.data && sc.data.case_results) {
-  h += section("Scenarios: expected and actual behaviour") +
+  h += section("Scenarios: expected and actual behaviour", ["yours"]) +
     `<p class="note">Each scenario scripts the inputs the sensors see over time, states what the firmware must report and must never report, and is judged against what the firmware actually printed.</p>`;
   for (const c of sc.data.case_results) {
     const out = c.output || [];
@@ -152,18 +162,18 @@ if (sc && sc.data && sc.data.case_results) {
       </table><div class="out">${out.map(esc).join("\n") || "(no output)"}</div></div></div></div></div>`;
   }
   const d = sc.data;
-  if (d.swept) h += `<h3>Glitch sweep of the safety decision</h3><p class="note">${d.swept} single-instruction skips reached their target; ${d.bypass} broke a rule; ${d.crashed} crashed or hung, counted apart.</p>` +
+  if (d.swept) h += `<h3>Glitch sweep of the safety decision${tag("gen")}</h3><p class="note">Generated by VirtuLab on the code the project names as safety-critical (target, functions).</p><p class="note">${d.swept} single-instruction skips reached their target; ${d.bypass} broke a rule; ${d.crashed} crashed or hung, counted apart.</p>` +
     (d.findings && d.findings.length ? `<table><tr><th>When</th><th>Instruction</th><th>Source</th></tr>${d.findings.map(f =>
       `<tr><td class="mono">${esc(f.probe)}</td><td class="mono">${esc(f.function)} · ${esc(f.instruction)}</td><td class="mono">${esc(f.file || "")}${f.line ? ":" + f.line : ""}</td></tr>`).join("")}</table>` : "");
 }
 
 // 5. every check's limits
-h += section("Scope and limits") + `<table><tr><th>Check</th><th>What it does not show</th></tr>` +
+h += section("Scope and limits", ["vl"]) + `<table><tr><th>Check</th><th>What it does not show</th></tr>` +
   R.checks.filter(c => c.limits).map(c => `<tr><td>${esc(c.title)}</td><td class="lim">${esc(c.limits)}</td></tr>`).join("") +
   `<tr><td>Emulation</td><td class="lim">Firmware logic and peripheral protocols run on an emulated board with sensor models written from their datasheets. Analog behaviour, exact timing, power and EMC are not emulated: hardware-in-the-loop remains the final gate.</td></tr></table>`;
 
 // 6. tools
-h += section("Tools") + `<table><tr><th>Tool</th><th>Version</th></tr>` +
+h += section("Tools", ["vl"]) + `<table><tr><th>Tool</th><th>Version</th></tr>` +
   Object.entries(M.tools || {}).map(([k, v]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(v)}</td></tr>`).join("") + `</table>`;
 
 h += `<div class="foot">This report is an input to a safety or security case, not a statement of compliance with any standard. The same results are recorded in machine-readable form in <code>.virtulab/evidence</code>: <code>evidence.json</code>, <code>junit.xml</code> and <code>results.sarif</code>.</div>`;

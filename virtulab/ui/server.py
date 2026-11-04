@@ -231,13 +231,52 @@ def app_window_command(url: str, candidates: list[str] | None = None) -> list[st
     return None
 
 
+FIREFOX = ["/Applications/Firefox.app/Contents/MacOS/firefox", "firefox"]
+
+# A clean profile kept for the studio: no first-run pages, and no tab bar or address bar, so the
+# window looks like an application. The person's own Firefox profile is never touched.
+_FIREFOX_PREFS = """\
+user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
+user_pref("browser.shell.checkDefaultBrowser", false);
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("trailhead.firstrun.didSeeAboutWelcome", true);
+user_pref("browser.startup.homepage_override.mstone", "ignore");
+user_pref("startup.homepage_welcome_url", "");
+user_pref("startup.homepage_welcome_url.additional", "");
+user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
+user_pref("browser.tabs.warnOnClose", false);
+user_pref("browser.sessionstore.resume_from_crash", false);
+user_pref("browser.toolbars.bookmarks.visibility", "never");
+user_pref("sidebar.revamp", false);
+"""
+_FIREFOX_CHROME = """\
+#TabsToolbar, #nav-bar, #PersonalToolbar, #titlebar, #sidebar-main, #sidebar-box { visibility: collapse !important; }
+"""
+
+
+def firefox_app_command(url: str, candidates: list[str] | None = None, profile: Path | None = None) -> list[str] | None:
+    """Firefox opening `url` in its own window with a clean studio profile, or None without Firefox."""
+    import shutil as _shutil
+    found = next((c if Path(c).is_file() else _shutil.which(c) for c in (candidates or FIREFOX)
+                  if Path(c).is_file() or _shutil.which(c)), None)
+    if not found:
+        return None
+    if profile is None:
+        from .. import tools
+        profile = tools.home() / "firefox-studio"
+    (profile / "chrome").mkdir(parents=True, exist_ok=True)
+    (profile / "user.js").write_text(_FIREFOX_PREFS)
+    (profile / "chrome" / "userChrome.css").write_text(_FIREFOX_CHROME)
+    return [found, "--new-instance", "--profile", str(profile), "--width", "1440", "--height", "900", url]
+
+
 def _open(url: str, app: bool) -> None:
-    command = app_window_command(url) if app else None
+    command = (firefox_app_command(url) or app_window_command(url)) if app else None
     if command:
         subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     else:
         if app:
-            print("   No Chrome, Edge, Chromium or Brave found for an app window: opening a browser tab instead.")
+            print("   No Firefox, Chrome, Edge, Chromium or Brave found for an app window: opening a browser tab instead.")
         webbrowser.open(url)
 
 

@@ -42,11 +42,11 @@ class StudioTest(unittest.TestCase):
         self.assertEqual(origins["src/patch.c"], "yours")
         self.assertEqual(origins["virtulab.yml"], "project")
         self.assertEqual(origins["src/mpu6050.c"], "starter")
-        self.assertEqual(origins["test/test_main.c"], "edited")      # the patch added its own suite
+        self.assertEqual(origins["test/test_main.c"], "extended")      # the patch added its own suite
         self.assertEqual(origins["virtulab/models/SHT31.cs"], "virtulab")
         self.assertEqual(self.studio.file("virtulab/runtime/startup.c")["origin"], "virtulab")
         (self.root / "src" / "mpu6050.c").write_text("/* changed */\n")
-        self.assertEqual(self.studio.origins()["src/mpu6050.c"], "edited")
+        self.assertEqual(self.studio.origins()["src/mpu6050.c"], "extended")
 
     def test_the_project_names_its_scenarios_and_variants(self):
         project = self.studio.project()

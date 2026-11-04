@@ -391,7 +391,8 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("--port", type=int, default=8765)
     st.add_argument("--no-browser", action="store_true")
     st.add_argument("--app", action="store_true",
-                    help="open in its own app window (Chrome, Edge, Chromium or Brave) instead of a browser tab")
+                    help="open in its own window, without tabs or address bar: Firefox (with a separate, clean profile) "
+                         "or else Chrome, Edge, Chromium or Brave")
     st.add_argument("--variant", action="append", default=[], metavar="NAME=FLAGS",
                     help="another build of the firmware to compare, e.g. plain=-DSAFE=0 (repeatable)")
     st.add_argument("--prepare", action="store_true",

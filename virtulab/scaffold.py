@@ -145,3 +145,24 @@ def starter_files(cfg: ProjectConfig, features: list[str] | None = None) -> dict
                 files[path.relative_to(TEMPLATES / feature).as_posix()] = text
     files["test/test_suites.h"], files["test/test_main.c"] = _test_files(features)
     return files
+
+
+def origins(cfg: ProjectConfig, root: Path, files: list[str]) -> dict[str, str]:
+    """Who wrote each project file: "project" (virtulab.yml: the setup VirtuLab wrote, the scenarios
+    the team wrote), "starter" (VirtuLab's sample for these sensors, unchanged), "extended" (VirtuLab's
+    sample, changed by the team) or "yours" (written by the team)."""
+    try:
+        starter = starter_files(cfg)
+    except VirtulabError:
+        starter = {}
+    found = {}
+    for rel in files:
+        if rel == "virtulab.yml":
+            found[rel] = "project"
+        elif rel in starter:
+            path = root / rel
+            same = path.is_file() and path.read_text(errors="replace") == starter[rel]
+            found[rel] = "starter" if same else "extended"
+        else:
+            found[rel] = "yours"
+    return found

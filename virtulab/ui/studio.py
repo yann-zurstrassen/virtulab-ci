@@ -72,23 +72,9 @@ class Studio:
         return shown
 
     def origins(self) -> dict[str, str]:
-        """Who wrote each file: "yours", "project" (virtulab.yml: setup written by VirtuLab, scenarios by
-        you), "starter" (VirtuLab's sample, unchanged), "edited" (VirtuLab's sample, changed in this
-        project) or "virtulab" (read-only, VirtuLab's own)."""
-        from ..scaffold import starter_files
-        cfg = config.load(self.root)
-        try:
-            starter = starter_files(cfg)
-        except VirtulabError:
-            starter = {}
-        found = {}
-        for rel in self.files():
-            if rel in starter:
-                found[rel] = "starter" if (self.root / rel).read_text(errors="replace") == starter[rel] else "edited"
-            elif rel == "virtulab.yml":
-                found[rel] = "project"   # VirtuLab writes the setup part, the user writes the scenarios
-            else:
-                found[rel] = "yours"
+        """Who wrote each file (scaffold.origins), plus "virtulab" for VirtuLab's own read-only files."""
+        from ..scaffold import origins
+        found = origins(config.load(self.root), self.root, self.files())
         found.update({rel: "virtulab" for rel in self.provided()})
         return found
 

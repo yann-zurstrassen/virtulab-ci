@@ -104,6 +104,58 @@
     #chart { height:120px; }
   }
   .tip { color:var(--muted); font-size:12px; margin-top:4px; }
+
+  /* ---- classic desktop theme: colours, fonts, borders and corners only ---- */
+  :root { --bg:#c0c0c0; --panel:#c0c0c0; --panel2:#c0c0c0; --line:#808080; --text:#000; --muted:#404040;
+          --accent:#000080; --ok:#007a00; --bad:#b00000; --warn:#7a5a00; }
+  body { background:#c0c0c0 !important; color:#000 !important; font-family:Tahoma, Verdana, "MS Sans Serif", Geneva, sans-serif !important; }
+  code, pre, .mono, .clock, .steps .t, .rule, .console, .cmd code { font-family:"Courier New", Courier, monospace !important; }
+  header { background:#000080 !important; border-bottom:2px solid #000 !important; }
+  header .logo, header .logo span, header .crumb, header .crumb b, a.link { color:#fff !important; }
+  header .crumb b[style] { color:#ffff80 !important; }
+  .pill { border-radius:0 !important; background:#c0c0c0 !important; color:#000 !important; border:0 !important;
+          box-shadow:inset -1px -1px #fff, inset 1px 1px #808080 !important; }
+  .pill.ok { background:#008000 !important; color:#fff !important; } .pill.bad { background:#b00000 !important; color:#fff !important; }
+  .pill.warn { background:#c0a000 !important; color:#000 !important; }
+  button, .hood-btn, button.primary, button.on { background:#c0c0c0 !important; color:#000 !important; border:0 !important; border-radius:0 !important;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  button.on, button:active { box-shadow:inset -1px -1px #fff, inset 1px 1px #000, inset -2px -2px #dfdfdf, inset 2px 2px #808080 !important; background:#d4d0c8 !important; }
+  aside { background:#c0c0c0 !important; border-left:2px groove #fff !important; }
+  aside h2 { color:#000 !important; }
+  .title { color:#000; } .desc { color:#202020 !important; }
+  .steps { border-left-color:#808080 !important; } .steps li { color:#606060 !important; } .steps li.past { color:#000 !important; }
+  .steps li::before { border-radius:0 !important; background:#fff !important; border-color:#808080 !important; }
+  .steps li.past::before { background:#000080 !important; border-color:#000080 !important; }
+  .steps li.now::before { box-shadow:0 0 0 3px #ffff00 !important; }
+  .steps .t { color:#000080 !important; }
+  .rule { background:#fff !important; border:0 !important; border-radius:0 !important; color:#000; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .rule .state { color:#404040 !important; } .rule.ok .state { color:#007a00 !important; } .rule.bad .state { color:#b00000 !important; }
+  .rule.ok { background:#e8ffe8 !important; } .rule.bad { background:#ffe8e8 !important; }
+  .console { background:#000 !important; border:0 !important; border-radius:0 !important; color:#c0c0c0; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .console .t { color:#808080 !important; } .console .final { color:#00ff00 !important; }
+  .console .alarm { color:#ff5050 !important; } .console .warning { color:#ffff00 !important; }
+  .verdict { border-radius:0 !important; font-weight:700; }
+  .verdict.ok { background:#e8ffe8 !important; border:2px solid #007a00 !important; color:#005a00 !important; }
+  .verdict.bad { background:#ffe8e8 !important; border:2px solid #b00000 !important; color:#900000 !important; }
+  .verdict.warn { background:#fff8d0 !important; border:2px solid #7a5a00 !important; color:#5a4000 !important; }
+  .verdict small { color:#202020 !important; } .verdict a { color:#000080 !important; }
+  .glitch { border-radius:0 !important; background:#fff8d0 !important; border:2px solid #7a5a00 !important; color:#202020 !important; }
+  .glitch b { color:#5a4000 !important; } .glitch.hit { background:#ffef80 !important; }
+  .glitch .src { background:#fff !important; color:#000 !important; border-radius:0 !important; }
+  .glitch .src s { color:#b00000 !important; } .glitch a { color:#000080 !important; }
+  .glitch code { background:#fff !important; color:#000 !important; border-radius:0 !important; }
+  footer { background:#c0c0c0 !important; border-top:2px groove #fff !important; }
+  .clock { color:#000 !important; } .clock small, .note, .tip { color:#404040 !important; }
+  #chart { box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  #hood { background:#c0c0c0 !important; border-left:2px solid #000 !important; box-shadow:-4px 0 0 #808080 !important; }
+  #hood h2 { color:#000 !important; } #hood .lead { color:#202020 !important; }
+  .cmd { background:#fff !important; border-radius:0 !important; border:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .cmd code { color:#000 !important; }
+  .judge td { border-bottom:1px solid #808080 !important; color:#000; }
+  .judge .good { color:#007a00 !important; } .judge .bad { color:#b00000 !important; } .judge .warn { color:#7a5a00 !important; }
+  details { background:#fff !important; border-radius:0 !important; border:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  details summary { color:#000 !important; } details summary small { color:#404040 !important; }
+  details pre { color:#000 !important; }
 </style>
 </head>
 <body>

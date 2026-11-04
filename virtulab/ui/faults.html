@@ -59,6 +59,49 @@
   .repro code { flex:1; color:#d7e0ee; font:12.5px ui-monospace, Menlo, monospace; word-break:break-all; }
   .repro button, .copy { background:#1a1f2b; color:#e3e7ef; border:1px solid #262c3a; border-radius:6px; font:inherit; font-size:12px; padding:3px 9px; cursor:pointer; }
   .hitcmd { width:100%; font:11.5px ui-monospace, Menlo, monospace; color:#8b94a7; margin:-2px 0 4px 26px; }
+
+  /* ---- classic desktop theme: colours, fonts, borders and corners only ---- */
+  :root { --bg:#c0c0c0; --panel:#c0c0c0; --panel2:#c0c0c0; --line:#808080; --text:#000; --muted:#404040;
+          --accent:#000080; --ok:#007a00; --bad:#b00000; --warn:#7a5a00; }
+  body { background:#c0c0c0 !important; color:#000 !important; font-family:Tahoma, Verdana, "MS Sans Serif", Geneva, sans-serif !important; }
+  code, pre, .repro code, .hitcmd, td.f, td.where, td.c, td.addr { font-family:"Courier New", Courier, monospace !important; }
+  header { background:#000080 !important; border-bottom:2px solid #000 !important; }
+  header .logo, header .logo span, header .crumb, header .crumb b { color:#fff !important; }
+  h2 { color:#000 !important; }
+  .pill { border-radius:0 !important; }
+  .pill.bad { background:#b00000 !important; color:#fff !important; } .pill.ok { background:#008000 !important; color:#fff !important; }
+  .how div, .card, .vocab span, .found, .fact { background:#c0c0c0 !important; border:0 !important; border-radius:0 !important;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; color:#000 !important; }
+  .how div span, .card .desc, .note, .numbers, .lead, .fact small { color:#202020 !important; }
+  .how div i { color:#000080 !important; } .numbers b, .card .name { color:#000 !important; }
+  .vocab b { color:#7a5a00 !important; }
+  .found.bad { background:#ffe8e8 !important; } .found.ok { background:#e8ffe8 !important; color:#005a00 !important; }
+  .found h2 { color:#900000 !important; } .found .said, .found .x { color:#b00000 !important; }
+  .found .when, .hitcmd { color:#404040 !important; }
+  .found button, .repro button, button { background:#c0c0c0 !important; color:#000 !important; border:0 !important; border-radius:0 !important; font-weight:700;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  .repro { background:#fff !important; border:0 !important; border-radius:0 !important; color:#404040 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .repro code { color:#000 !important; }
+  pre { background:#fff !important; color:#000 !important; border-radius:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  pre div .n { color:#808080 !important; }
+  pre div.fatal { background:#ffe0e0 !important; border-left-color:#b00000 !important; }
+  pre div.hover { background:#ffff99 !important; border-left-color:#000080 !important; }
+  table { background:#fff; } th { background:#c0c0c0 !important; color:#000 !important; border-bottom:1px solid #808080 !important; }
+  td { border-bottom:1px solid #dfdfdf !important; color:#000; }
+  tr:hover td { background:#ffffcc !important; } tr.fatal td { background:#ffe8e8 !important; }
+  td.where, td.f { color:#202020 !important; } td.c { color:#000080 !important; } td.f .k { color:#7a5a00 !important; }
+  .cell { border-radius:0 !important; }
+  .held { background:#d8f0d8 !important; color:#006000 !important; }
+  .broken { background:#b00000 !important; color:#fff !important; box-shadow:none !important; }
+  .crashed { background:#fff0b0 !important; color:#7a5a00 !important; }
+  .not_reached { color:#a0a0a0 !important; }
+  .legend { color:#202020 !important; }
+  .tag { border-radius:0 !important; border:1px solid #808080; background:#fff !important; }
+  .tag.never { color:#a00000 !important; } .tag.ok { color:#006000 !important; } .tag.skip { color:#404040 !important; }
+  .scroll { box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .fact b { color:#000 !important; } .fact.ok b { color:#007a00 !important; } .fact.bad b { color:#b00000 !important; } .fact.warn b { color:#7a5a00 !important; }
+  td.r.pass { color:#007a00 !important; } td.r.fail { color:#b00000 !important; } td.lim { color:#5a4000 !important; }
+  h1 { color:#000 !important; } h1 span { color:#000080 !important; }
 </style>
 </head>
 <body>
@@ -92,6 +135,7 @@ const flagPart = FLAGS ? " " + FLAGS[0] : "";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+$("repro").innerHTML = reproLine(D.command || "");
 const inStudio = window.parent !== window;
 const active = D.cases.filter(c => !c.skipped);
 $("win").textContent = D.window_ms;
@@ -142,7 +186,6 @@ $("cases").innerHTML = D.cases.map(c => {
   }
   return h + "</table></div>";
 }).join("");
-$("repro").innerHTML = reproLine(D.command || "");
 </script>
 </body>
 </html>

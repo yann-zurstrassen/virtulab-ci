@@ -201,6 +201,37 @@ MODULES = {m.id: m for m in [
 ]}
 
 
+# How far each model has been checked, beyond being written from its datasheet. Promote a model only
+# with the evidence named here.
+CROSS_CHECKED = {
+    "sht31": "Sensirion's own embedded-i2c-sht3x driver runs against it on the virtual board "
+             "(examples/sensirion-sht3x)",
+}
+HARDWARE_VALIDATED: dict[str, str] = {}   # none yet: see docs/VALIDATION.md
+
+
+def model_trust(module_id: str) -> dict:
+    """The evidence behind a sensor model, as one level and the reason for it."""
+    m = MODULES[module_id]
+    if module_id in HARDWARE_VALIDATED:
+        return {"level": "hardware-validated", "label": "Validated against real hardware",
+                "detail": HARDWARE_VALIDATED[module_id]}
+    if m.tier != "accurate":
+        return {"level": "built-in", "label": "Renode's built-in model",
+                "detail": "Written by the Renode project. VirtuLab has not reviewed it against the datasheet, "
+                          "nor validated it against real hardware."}
+    ds = _datasheet_summary(module_id)
+    cited = "every fact cited" if ds and not ds["unverified"] else (
+        f"{ds['unverified']} facts not yet cited" if ds else "no fact map yet")
+    if module_id in CROSS_CHECKED:
+        return {"level": "cross-checked", "label": "Cross-checked against the manufacturer's driver",
+                "detail": f"Written from the datasheet ({cited}), and {CROSS_CHECKED[module_id]}. "
+                          "Not yet validated against real hardware."}
+    return {"level": "datasheet", "label": "Written from the datasheet",
+            "detail": f"Written from the datasheet ({cited}). Not yet cross-checked against an independent "
+                      "driver, nor validated against real hardware."}
+
+
 def _datasheet_summary(module_id: str) -> dict | None:
     from . import datasheets
     return datasheets.summary(module_id)
@@ -211,7 +242,7 @@ def module_info(m: Module) -> dict:
         "id": m.id, "title": m.title, "kind": m.kind, "protocol": m.protocol, "tier": m.tier,
         "summary": m.summary, "default_address": m.default_address,
         "addresses": list(m.addresses), "sim": list(m.sim), "gaps": m.gaps,
-        "default_cs": m.default_cs, "datasheet": _datasheet_summary(m.id),
+        "default_cs": m.default_cs, "datasheet": _datasheet_summary(m.id), "trust": model_trust(m.id),
     }
 
 

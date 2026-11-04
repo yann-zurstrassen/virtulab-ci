@@ -118,7 +118,10 @@ def run(cfg: ProjectConfig, root: Path, work: Path):
     wrong = [c.name for c, (verdict, _) in zip(cases, plain) if verdict != "held"]
     log = "\n".join(f"--- {c.name}: {v}\n{o}" for c, (v, o) in zip(cases, plain))
     from .config import all_stimulus
+    from .evidence import sha256
     data: dict = {"cases": len(cases), "swept": 0, "bypass": 0, "crashed": 0, "findings": [],
+                  "image": {"sha256": sha256(elf), "flash": result.sizes.flash if result.sizes else None,
+                            "ram": result.sizes.ram if result.sizes else None},
                   "case_results": [{
                       "name": c.name, "description": c.description, "expect": c.expect, "forbid": c.forbid,
                       "verdict": v, "output": [line for line in o.splitlines()

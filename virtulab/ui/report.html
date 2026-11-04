@@ -80,12 +80,29 @@ h += section("Identification") + `<table class="id">
   <tr><td>Target</td><td>${esc(R.board.name)} · ${esc(R.board.description)}</td></tr>
   ${Object.keys(R.modules).length ? `<tr><td>Peripherals</td><td>${Object.entries(R.modules).map(([k, m]) => `${esc(k)}: ${esc(m.model)} on ${esc(m.bus)}${m.address != null ? " @ 0x" + Number(m.address).toString(16) : ""}`).join("<br>")}</td></tr>` : ""}
   ${img.sha256 ? `<tr><td>Firmware image (unit tests)</td><td><code>SHA-256 ${esc(img.sha256)}</code><br>flash ${img.flash} bytes · RAM ${img.ram} bytes</td></tr>` : ""}
+  ${(() => { const sc0 = R.checks.find(c => c.test === "scenarios"); const si = sc0 && sc0.data && sc0.data.image;
+     return si ? `<tr><td>Firmware image (scenarios)</td><td><code>SHA-256 ${esc(si.sha256)}</code>${si.flash ? `<br>flash ${si.flash} bytes · RAM ${si.ram} bytes` : ""}</td></tr>` : ""; })()}
   ${R.command ? `<tr><td>Command</td><td><code>${esc(R.command)}</code></td></tr>` : ""}
   <tr><td>Produced by</td><td>VirtuLab ${esc(M.virtulab)} · ${esc(when)}</td></tr></table>`;
 
 // 2. summary
 h += section("Summary") + `<table><tr><th>Check</th><th>Result</th><th>Outcome</th></tr>` +
   R.checks.map(c => `<tr><td>${esc(c.title)}</td><td>${status(c.status)}</td><td>${esc(c.summary)}</td></tr>`).join("") + `</table>`;
+
+// emulated peripherals, and how far each model has been checked
+const models = Object.entries(M.models || {});
+if (models.length) {
+  h += section("Emulated peripherals") + `<p class="note">Which model answered for each peripheral, and the evidence behind it. A model is promoted only with the evidence its level names.</p>
+    <table><colgroup><col style="width:90px"><col style="width:26%"><col><col style="width:24%"></colgroup><tr><th>Peripheral</th><th>Model</th><th>Evidence behind the model</th><th>Model file</th></tr>` +
+    models.map(([n, e]) => `<tr><td><code>${esc(n)}</code></td><td>${esc(e.title)}</td><td><b>${esc(e.trust.label)}</b><br><span class="note">${esc(e.trust.detail)}</span></td>
+      <td>${e.file ? `<code>${esc(e.file)}</code><br><code style="font-size:10.5px;word-break:break-all">${esc(e.sha256)}</code>` : "—"}</td></tr>`).join("") + `</table>`;
+}
+const inputs = Object.entries(M.inputs || {});
+if (inputs.length) {
+  h += section("Inputs") + `<p class="note">The files that decided what was tested, with their SHA-256: the same files give the same result.</p><table><tr><th>File</th><th>SHA-256</th></tr>` +
+    inputs.map(([n, v]) => `<tr><td><code>${esc(n)}</code></td><td><code style="font-size:11px">${esc(v)}</code></td></tr>`).join("") + `</table>`;
+}
+
 
 // 3. unit tests, with every check
 if (R.unit.length) {

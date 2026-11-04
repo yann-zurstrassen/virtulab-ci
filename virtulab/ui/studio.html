@@ -107,6 +107,67 @@
   .tile span { color:#b9c1cf; font-size:13px; }
   .tile.off { cursor:default; opacity:.55; }
   .empty b { display:block; color:var(--text); font-size:18px; margin-bottom:6px; }
+
+  /* ---- classic desktop theme: colours, fonts, borders and corners only ---- */
+  :root { --bg:#c0c0c0; --panel:#c0c0c0; --panel2:#c0c0c0; --line:#808080; --text:#000; --muted:#404040;
+          --accent:#000080; --ok:#007a00; --bad:#b00000; --warn:#7a5a00; color-scheme:light; }
+  body { background:#c0c0c0 !important; color:#000; font-family:Tahoma, Verdana, "MS Sans Serif", Geneva, sans-serif !important; }
+  code, pre, .mono, .src, .flags, .tag, .cmd code { font-family:"Courier New", Courier, monospace !important; }
+  header { background:#000080 !important; color:#fff; border-bottom:2px solid #000 !important; }
+  header .logo, header .logo span, header .proj, header .proj b, header .crumb, header .crumb b, header .job { color:#fff !important; }
+  .tabs { background:transparent !important; border:0 !important; padding:0 !important; gap:2px !important; }
+  .tabs button, .seg button, button.go, button.go.alt, button.go.warn, .hood-btn, button {
+    background:#c0c0c0 !important; color:#000 !important; border:0 !important; border-radius:0 !important; font-weight:700;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  .tabs button.on, .seg button.on, button:active { box-shadow:inset -1px -1px #fff, inset 1px 1px #000, inset -2px -2px #dfdfdf, inset 2px 2px #808080 !important; background:#d4d0c8 !important; }
+  .tabs button .k { color:#404040 !important; }
+  .seg { background:transparent !important; border:0 !important; gap:2px !important; }
+  .tree, .side, .editor, .viewer, aside { background:#c0c0c0 !important; }
+  .tree button { color:#000 !important; border-radius:0 !important; }
+  .tree button.on { background:#000080 !important; color:#fff !important; }
+  .tree .group { border-radius:0 !important; background:#c0c0c0 !important; color:#000 !important;
+                 box-shadow:inset -1px -1px #fff, inset 1px 1px #808080 !important; }
+  .tree .group small, .tree .dir { color:#404040 !important; }
+  .src { background:#fff !important; color:#000; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .src div::before { color:#808080 !important; }
+  .t-com { color:#008000 !important; } .t-str { color:#a31515 !important; } .t-num { color:#098658 !important; }
+  .t-kw { color:#0000ff !important; } .t-pre { color:#800080 !important; } .t-fn { color:#795e26 !important; }
+  .t-key { color:#0000a0 !important; } .t-type { color:#267f99 !important; }
+  .src div.hl { background:#ffff99 !important; box-shadow:inset 3px 0 0 #000080 !important; }
+  .editor .bar, .viewer .bar { background:#c0c0c0 !important; color:#000 !important; border-bottom:2px groove #fff !important; }
+  .editor .bar b, .viewer .bar b { color:#000 !important; }
+  .badge { border-radius:0 !important; border:1px solid #808080; background:#fff !important; color:#000 !important; }
+  .case, .tile { background:#c0c0c0 !important; border:0 !important; border-radius:0 !important;
+                 box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  .case.on { box-shadow:inset 0 0 0 2px #000080, inset -3px -3px #808080, inset 3px 3px #fff !important; }
+  .case .name, .tile b { color:#000 !important; } .case .desc, .tile span { color:#202020 !important; }
+  .tile b.ok { color:#007a00 !important; } .tile b.bad { color:#b00000 !important; }
+  .tile small, .side h3, .row small { color:#404040 !important; }
+  .tag { border-radius:0 !important; border:1px solid #808080; background:#fff !important; }
+  .tag.must { color:#006000 !important; } .tag.never { color:#a00000 !important; } .tag.glitch { color:#7a5a00 !important; }
+  .flags { color:#202020 !important; }
+  .progress, .empty { background:#c0c0c0 !important; }
+  .progress pre { background:#000 !important; color:#c0c0c0 !important; border-radius:0 !important; }
+  .progress .head { color:#000; }
+  .spin { border-color:#808080 !important; border-top-color:#000080 !important; }
+  .dash h1 { color:#000 !important; } .dash p { color:#202020 !important; }
+  iframe { background:#c0c0c0 !important; }
+  /* the file tree is a list, not buttons; the left marker keeps who wrote each file */
+  .tree { background:#fff !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  .tree button { background:transparent !important; box-shadow:none !important; font-weight:400 !important;
+                 padding:2px 8px !important; border-left:4px solid transparent !important; }
+  .tree button.yours { border-left-color:#0000c0 !important; }
+  .tree button.project { border-left-color:#c08000 !important; }
+  .tree button.starter, .tree button.edited { border-left-color:#800080 !important; }
+  .tree button.virtulab { border-left-color:#008080 !important; }
+  .tree button.on { background:#000080 !important; color:#fff !important; }
+  .tree .group { background:#c0c0c0 !important; box-shadow:inset -1px -1px #808080, inset 1px 1px #fff !important; margin:10px 0 2px !important; }
+  .tree .group.yours { border-left:6px solid #0000c0; } .tree .group.project { border-left:6px solid #c08000; }
+  .tree .group.starter { border-left:6px solid #800080; } .tree .group.virtulab { border-left:6px solid #008080; }
+  .tree button .ed { color:#7a5a00 !important; }
+  .badge.yours { border-left:6px solid #0000c0 !important; } .badge.project { border-left:6px solid #c08000 !important; }
+  .badge.starter, .badge.edited { border-left:6px solid #800080 !important; } .badge.virtulab { border-left:6px solid #008080 !important; }
+  .src { background-image:none !important; }
 </style>
 </head>
 <body>

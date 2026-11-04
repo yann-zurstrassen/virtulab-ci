@@ -52,3 +52,34 @@ class EvidenceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProvenanceTest(unittest.TestCase):
+    def test_each_model_says_how_far_it_was_checked(self):
+        from virtulab.catalog import MODULES, model_trust
+        self.assertEqual(model_trust("sht31")["level"], "cross-checked")
+        self.assertEqual(model_trust("mpu6050")["level"], "datasheet")
+        self.assertEqual(model_trust("bmp180")["level"], "built-in")
+        for m in MODULES:      # nothing claims hardware validation without evidence
+            self.assertNotEqual(model_trust(m)["level"], "hardware-validated")
+            self.assertIn("hardware", model_trust(m)["detail"] + model_trust(m)["label"])
+
+    def test_the_record_fingerprints_inputs_and_models(self):
+        import shutil
+        import tempfile
+        from virtulab import config
+        repo = Path(__file__).resolve().parent.parent
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        root = tmp / "patch"
+        shutil.copytree(repo / "examples/wearable-patch", root, ignore=shutil.ignore_patterns(".virtulab"))
+        cfg = config.load(root)
+        m = evidence.manifest(cfg, SuiteResult(), root)
+        self.assertEqual(set(m["inputs"]), {"virtulab.yml", "inputs/daily_life.csv", "inputs/patient_falls.csv",
+                                            "inputs/fever.csv", "inputs/damaged_sensor_cable.csv"})
+        self.assertEqual(m["inputs"]["virtulab.yml"], evidence.sha256(root / "virtulab.yml"))
+        self.assertEqual(m["models"]["imu"]["file"], "virtulab/devices/MPU6050.cs")
+        self.assertEqual(m["models"]["skin"]["trust"]["level"], "cross-checked")
+        (root / "inputs/fever.csv").write_text("time_ms,skin.Temperature\n0,40\n")
+        self.assertNotEqual(evidence.manifest(cfg, SuiteResult(), root)["inputs"]["inputs/fever.csv"],
+                            m["inputs"]["inputs/fever.csv"])

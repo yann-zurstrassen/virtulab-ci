@@ -114,6 +114,27 @@
   .snippet pre { max-height: 260px; }
   .snippet .hl { background: rgba(109, 151, 255, .28); display: inline-block; width: 100%; }
   .summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+
+  /* ---- classic desktop theme: colours, fonts, borders and corners only ---- */
+  :root { --bg:#c0c0c0; --panel:#c0c0c0; --text:#000; --muted:#404040; --line:#808080; --accent:#000080; --accent-text:#fff;
+          --ok:#007a00; --warn:#7a5a00; --bad:#b00000; --chip:#fff; --code-bg:#fff; --code-text:#000; --sel:#d4d0c8; color-scheme:light; }
+  body { background:#c0c0c0 !important; color:#000; font-family:Tahoma, Verdana, "MS Sans Serif", Geneva, sans-serif !important; }
+  pre, code { font-family:"Courier New", Courier, monospace !important; }
+  section.step, aside .box, .card, .test { border:0 !important; border-radius:0 !important; background:#c0c0c0 !important;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  .card[aria-pressed="true"], .card.on, .test.on { background:#d4d0c8 !important;
+    box-shadow:inset 0 0 0 2px #000080, inset -3px -3px #808080, inset 3px 3px #fff !important; }
+  h2 .n { border-radius:0 !important; background:#000080 !important; color:#fff !important; }
+  .badge, .chip, .st, .place { border-radius:0 !important; border:1px solid #808080 !important; background:#fff !important; }
+  .chip[aria-pressed="true"] { background:#000080 !important; color:#fff !important; }
+  button.btn, .btn.primary { border-radius:0 !important; border:0 !important; background:#c0c0c0 !important; color:#000 !important; font-weight:700;
+    box-shadow:inset -1px -1px #000, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf !important; }
+  pre { background:#fff !important; color:#000 !important; border-radius:0 !important; box-shadow:inset 1px 1px #808080, inset -1px -1px #fff; }
+  input[type=text], input[type=number], select { border-radius:0 !important; background:#fff !important; color:#000 !important; }
+  dialog { border-radius:0 !important; background:#c0c0c0 !important; border:2px solid #000 !important; }
+  dialog th { background:#c0c0c0 !important; }
+  .tabs button[aria-selected="true"] { background:#fff !important; border-radius:0 !important; }
+  header h1 .logo span { color:#000080 !important; }
 </style>
 </head>
 <body>
@@ -284,8 +305,11 @@ function renderSensors() {
     grid.append(el("div", { class: "cardwrap" },
       el("button", { class: "card" + (usable ? "" : " off"), disabled: !usable, onclick: () => addModule(m) },
         el("b", {}, m.title), el("small", {}, m.summary),
-        el("span", { class: "badge " + (m.tier === "accurate" ? "ok" : "warn") },
-          m.tier === "accurate" ? "datasheet model" : "built-in model"),
+        el("span", { class: "badge " + (m.trust && m.trust.level === "cross-checked" ? "ok" : m.tier === "accurate" ? "" : "warn"),
+          title: m.trust ? m.trust.detail : "" },
+          m.trust ? m.trust.label.replace("Cross-checked against the manufacturer's driver", "cross-checked with vendor driver")
+                                 .replace("Written from the datasheet", "from datasheet").replace("Renode's built-in model", "Renode built-in")
+                  : (m.tier === "accurate" ? "datasheet model" : "built-in model")),
         el("span", { class: "badge" }, m.protocol.toUpperCase()),
         m.gaps ? el("small", {}, "Not modelled: " + m.gaps) : ""),
       ds ? el("button", { class: "link", onclick: () => openDatasheet(m.id) },

@@ -123,7 +123,50 @@ def manifest(cfg: ProjectConfig, suite, root: Path) -> dict:
     build = suite.outcome.build if suite.outcome else None
     if build and build.elf and build.elf.is_file():
         data["image"] = {"sha256": sha256(build.elf), "flash": build.sizes.flash, "ram": build.sizes.ram}
+    data["inputs"] = _inputs(cfg, root)
+    data["models"] = _models(cfg, root)
     return data
+
+
+def _inputs(cfg: ProjectConfig, root: Path) -> dict[str, str]:
+    """SHA-256 of every file that decides what was tested: the project file, the scenario inputs,
+    and the user's own models, so a result names exactly what produced it."""
+    names = ["virtulab.yml", cfg.stimulus_file, *cfg.models, cfg.repl]
+    cases = (cfg.tests.get("scenarios") or {}).get("cases") or {}
+    names += [c.get("stimulus_file") for c in cases.values() if isinstance(c, dict)]
+    found = {}
+    for name in names:
+        if name and (root / name).is_file():
+            found[name] = sha256(root / name)
+    return dict(sorted(found.items()))
+
+
+def _models(cfg: ProjectConfig, root: Path) -> dict[str, dict]:
+    """Each emulated peripheral: which model answered for it, its file's SHA-256, and how far that
+    model has been checked (catalog.model_trust)."""
+    from . import DEVICES_DIR
+    from .catalog import MODULES, model_trust
+    found = {}
+    for name, m in cfg.modules.items():
+        module = MODULES.get(m.model)
+        if not module:
+            continue
+        entry = {"model": m.model, "title": module.title, "trust": model_trust(m.model)}
+        if module.renode_type.startswith("VirtuLab."):
+            source = DEVICES_DIR / f"{module.renode_type.split('.', 1)[1]}.cs"
+            if source.is_file():
+                entry["file"] = f"virtulab/devices/{source.name}"
+                entry["sha256"] = sha256(source)
+        found[name] = entry
+    for name, p in cfg.peripherals.items():
+        found[name] = {"model": "register list", "title": f"{name}: described in virtulab.yml",
+                       "trust": {"level": "register-list", "label": "Your register list",
+                                 "detail": "Stores the registers you listed; it has no behaviour beyond that."}}
+    for name, a in cfg.analog.items():
+        found[name] = {"model": "ADC", "title": f"{name}: the chip's ADC",
+                       "trust": {"level": "ideal", "label": "Ideal ADC",
+                                 "detail": "Exact voltages, no noise, sampling or conversion time."}}
+    return found
 
 
 def evidence_markdown(m: dict) -> str:
@@ -139,6 +182,12 @@ def evidence_markdown(m: dict) -> str:
     clean = lambda t: re.sub(r"\s+", " ", t).replace("|", "\\|")
     for c in m["checks"]:
         lines.append(f"| {c['test']} | {c['status']} | {clean(c['summary'])} | {clean(c['limits']) or '—'} |")
+    if m.get("models"):
+        lines += ["", "## Emulated peripherals", "", "| Peripheral | Model | Evidence behind the model | SHA-256 |",
+                  "| :-- | :-- | :-- | :-- |"]
+        lines += [f"| {n} | {e['title']} | {e['trust']['label']} | `{e.get('sha256', '—')}` |" for n, e in m["models"].items()]
+    if m.get("inputs"):
+        lines += ["", "## Inputs", ""] + [f"- `{n}`: `{h}`" for n, h in m["inputs"].items()]
     lines += ["", "## Tools", ""] + [f"- **{k}:** {v}" for k, v in m["tools"].items()] + [""]
     return "\n".join(lines)
 
